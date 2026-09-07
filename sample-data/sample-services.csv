@@ -1,0 +1,21 @@
+name,category,defaultPrice,gstPercent
+General Consultation,consultation,500,0
+Specialist Consultation,consultation,800,0
+Follow-up Consultation,consultation,300,0
+Complete Blood Count (CBC),lab,300,0
+Blood Sugar Test (Fasting),lab,150,0
+Lipid Profile,lab,600,0
+Liver Function Test,lab,700,0
+Kidney Function Test,lab,650,0
+Urine Routine Test,lab,200,0
+X-Ray (Single View),lab,400,0
+ECG,lab,350,0
+Ultrasound Abdomen,lab,900,0
+Minor Wound Dressing,operation,250,0
+Suturing (Minor),operation,800,0
+Appendectomy,operation,15000,0
+Normal Delivery,operation,12000,0
+Cesarean Section,operation,25000,0
+Cataract Surgery,operation,18000,0
+"Room Charges (General Ward, per day)",other,800,0
+Ambulance Service,other,1000,0
