@@ -44,7 +44,10 @@ export async function login(req, res) {
 }
 
 export function logout(req, res) {
-  res.clearCookie("token", cookieOptions).json({ message: "Logged out" });
+  // clearCookie only needs the identifying attributes (path/domain/sameSite/
+  // secure) — passing maxAge is deprecated in Express 4 and ignored in 5.
+  const { maxAge, ...clearOptions } = cookieOptions;
+  res.clearCookie("token", clearOptions).json({ message: "Logged out" });
 }
 
 export function me(req, res) {

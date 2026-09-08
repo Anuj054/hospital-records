@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "hospital-backend",
+      name: "backend",
       script: "server.js",
       watch: false,
       autorestart: true,
