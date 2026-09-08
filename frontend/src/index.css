@@ -861,11 +861,11 @@ h3 {
 }
 
 .searchable-select-list {
-  position: absolute;
-  z-index: 20;
-  top: 100%;
-  left: 0;
-  right: 0;
+  /* top/left/width are set inline per-instance (see SearchableSelect.jsx) —
+     fixed to viewport coordinates so it isn't clipped by any scrolling
+     ancestor (e.g. the bill items table's horizontal-scroll wrapper). */
+  position: fixed;
+  z-index: 200;
   max-height: 240px;
   overflow-y: auto;
   background: var(--surface);

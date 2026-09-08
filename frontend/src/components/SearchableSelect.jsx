@@ -3,10 +3,20 @@ import { useEffect, useRef, useState } from "react";
 // A lightweight type-to-filter combobox. `options` items need `_id` and a
 // `label` (pre-formatted display string) plus whatever payload the caller
 // wants back in onSelect.
+//
+// The dropdown list is rendered with position:fixed (viewport coordinates
+// computed from the input's own bounding rect) rather than position:absolute
+// anchored to this component. That's deliberate: when this sits inside a
+// horizontally-scrollable table wrapper (overflow-x:auto), the CSS spec
+// forces overflow-y to auto too on that wrapper even if you don't ask for
+// it, which would otherwise clip the popup instead of letting it float over
+// the page.
 export default function SearchableSelect({ options, placeholder, onSelect, value }) {
   const [query, setQuery] = useState(value || "");
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState(null);
   const containerRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     setQuery(value || "");
@@ -14,11 +24,39 @@ export default function SearchableSelect({ options, placeholder, onSelect, value
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target) &&
+        !e.target.closest(".searchable-select-list")
+      ) {
+        setOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    // Popovers anchored like this don't track scroll smoothly, so just
+    // close on scroll (any ancestor, hence capture:true) rather than
+    // fighting to keep it aligned.
+    function handleScroll() {
+      setOpen(false);
+    }
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [open]);
+
+  function openDropdown() {
+    const rect = inputRef.current.getBoundingClientRect();
+    setPosition({ top: rect.bottom, left: rect.left, width: rect.width });
+    setOpen(true);
+  }
 
   const filtered =
     query.trim() === ""
@@ -30,16 +68,20 @@ export default function SearchableSelect({ options, placeholder, onSelect, value
   return (
     <div className="searchable-select" ref={containerRef}>
       <input
+        ref={inputRef}
         value={query}
         placeholder={placeholder || "Type to search..."}
         onChange={(e) => {
           setQuery(e.target.value);
-          setOpen(true);
+          openDropdown();
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={openDropdown}
       />
-      {open && (
-        <ul className="searchable-select-list">
+      {open && position && (
+        <ul
+          className="searchable-select-list"
+          style={{ top: position.top, left: position.left, width: position.width }}
+        >
           {filtered.length > 0 ? (
             filtered.map((opt) => (
               <li
