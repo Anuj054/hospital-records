@@ -27,10 +27,28 @@ function recomputeTotals(bill) {
   bill.subtotal = bill.totalAmount - bill.gstAmount; // taxable value
 }
 
+// Mirrors the Bill schema's virtuals for plain .lean() objects (which skip
+// Mongoose document hydration — cheaper for read-only responses, but that
+// means no getters, so we attach the same computed fields by hand).
+function withComputed(bill) {
+  const paidAmount = bill.payments.reduce((sum, p) => sum + p.amount, 0);
+  const balance = Math.max(bill.totalAmount - paidAmount, 0);
+  const status = bill.mergedInto
+    ? "merged"
+    : !bill.isFinalized
+    ? "draft"
+    : paidAmount <= 0
+    ? "pending"
+    : paidAmount >= bill.totalAmount
+    ? "paid"
+    : "partial";
+  return { ...bill, id: bill._id, paidAmount, balance, status };
+}
+
 // Get the patient's current open draft, or null.
 export async function getDraftBill(req, res) {
-  const bill = await Bill.findOne({ patientId: req.params.patientId, isFinalized: false });
-  res.json(bill);
+  const bill = await Bill.findOne({ patientId: req.params.patientId, isFinalized: false }).lean();
+  res.json(bill ? withComputed(bill) : null);
 }
 
 // Add items to the patient's current draft, creating one if none exists yet.
@@ -78,14 +96,14 @@ export async function finalizeBill(req, res) {
 }
 
 export async function listBillsForPatient(req, res) {
-  const bills = await Bill.find({ patientId: req.params.patientId }).sort({ date: -1 });
-  res.json(bills);
+  const bills = await Bill.find({ patientId: req.params.patientId }).sort({ date: -1 }).lean();
+  res.json(bills.map(withComputed));
 }
 
 export async function getBill(req, res) {
-  const bill = await Bill.findById(req.params.billId);
+  const bill = await Bill.findById(req.params.billId).lean();
   if (!bill) return res.status(404).json({ message: "Bill not found" });
-  res.json(bill);
+  res.json(withComputed(bill));
 }
 
 export async function deleteBill(req, res) {

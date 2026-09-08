@@ -7,7 +7,7 @@ export async function getStats(req, res) {
 
   const [patientsToday, bills] = await Promise.all([
     Patient.countDocuments({ createdAt: { $gte: startOfDay } }),
-    Bill.find({ isFinalized: true }, "totalAmount payments"),
+    Bill.find({ isFinalized: true }, "totalAmount payments").lean(),
   ]);
 
   let collectedToday = 0;

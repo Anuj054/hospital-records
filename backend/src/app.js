@@ -6,7 +6,7 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 
-import swaggerSpec from "./config/swagger.js";
+import { getSwaggerSpec } from "./config/swagger.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import patientRoutes from "./routes/patient.routes.js";
@@ -41,7 +41,11 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Spec is generated lazily on first hit (see getSwaggerSpec), not at import
+// time, so routes other than /api-docs don't pay for globbing+parsing every
+// route file's JSDoc on cold start.
+app.use("/api-docs", swaggerUi.serve);
+app.get("/api-docs", (req, res, next) => swaggerUi.setup(getSwaggerSpec())(req, res, next));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

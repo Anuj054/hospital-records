@@ -14,7 +14,9 @@ export function connectDB() {
   if (!uri) throw new Error("MONGO_URI is not set in .env");
 
   connectionPromise = mongoose
-    .connect(uri)
+    .connect(uri, {
+      maxPoolSize: 10, // each serverless instance handles ~1 request at a time; default 100 is wasteful and can exhaust Atlas M0's connection limit under concurrency
+    })
     .then((conn) => {
       console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
       return conn;
