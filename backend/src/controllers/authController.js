@@ -1,27 +1,6 @@
-import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Staff from "../models/Staff.js";
-
-// In production the frontend and backend live on different Vercel domains,
-// so the auth cookie must be sent cross-site — that requires SameSite=None,
-// which browsers only honor when the cookie is also Secure (HTTPS).
-// Locally both run on http://localhost, where SameSite=None+Secure would be
-// dropped by the browser entirely, so we fall back to Lax there.
-const isProd = process.env.NODE_ENV === "production";
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: isProd ? "none" : "lax",
-  secure: isProd,
-  maxAge: 12 * 60 * 60 * 1000,
-};
-
-function issueSession(res, { username, role }) {
-  const token = jwt.sign({ username, role }, process.env.JWT_SECRET, {
-    expiresIn: "12h",
-  });
-
-  res.cookie("token", token, cookieOptions);
-}
+import { issueSession, clearSession } from "../utils/session.js";
 
 export async function login(req, res) {
   const { username, password } = req.body;
@@ -44,10 +23,8 @@ export async function login(req, res) {
 }
 
 export function logout(req, res) {
-  // clearCookie only needs the identifying attributes (path/domain/sameSite/
-  // secure) — passing maxAge is deprecated in Express 4 and ignored in 5.
-  const { maxAge, ...clearOptions } = cookieOptions;
-  res.clearCookie("token", clearOptions).json({ message: "Logged out" });
+  clearSession(res);
+  res.json({ message: "Logged out" });
 }
 
 export function me(req, res) {

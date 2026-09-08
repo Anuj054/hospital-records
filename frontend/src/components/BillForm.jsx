@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
+import { loadCatalog } from "../api/catalog";
 import SearchableSelect from "./SearchableSelect";
 
 export default function BillForm({ patientId, onAdded }) {
@@ -12,13 +13,17 @@ export default function BillForm({ patientId, onAdded }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    Promise.all([client.get("/medicines"), client.get("/services")]).then(([meds, services]) => {
-      setCatalog([
-        ...meds.data.map((m) => ({ ...m, kind: "Medicine" })),
-        ...services.data.map((s) => ({ ...s, kind: "Service" })),
-      ]);
+    // Cached in api/catalog.js — this component remounts on every toggle of
+    // the "+ Add Items" panel, and the catalog rarely changes.
+    let active = true;
+    loadCatalog().then(({ catalog: items, doctors: docs }) => {
+      if (!active) return;
+      setCatalog(items);
+      setDoctors(docs);
     });
-    client.get("/doctors").then((res) => setDoctors(res.data));
+    return () => {
+      active = false;
+    };
   }, []);
 
   function updateItem(index, patch) {

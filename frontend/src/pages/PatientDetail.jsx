@@ -292,12 +292,7 @@ function ReportsSection({ patientId, patient, onChange }) {
       ) : (
         <div className="reports-grid">
           {patient.reports.map((r) => (
-            <ReportCard
-              key={r._id}
-              patientId={patientId}
-              report={r}
-              onDelete={() => handleDelete(r._id)}
-            />
+            <ReportCard key={r._id} report={r} onDelete={() => handleDelete(r._id)} />
           ))}
         </div>
       )}
@@ -307,15 +302,12 @@ function ReportsSection({ patientId, patient, onChange }) {
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp)$/i;
 
-function ReportCard({ patientId, report, onDelete }) {
-  const [url, setUrl] = useState(null);
+// The signed URL comes down with the patient record (all of them signed in
+// one batch server-side), so a patient with eight reports no longer fires
+// eight extra requests after the page mounts.
+function ReportCard({ report, onDelete }) {
+  const url = report.url;
   const isImage = IMAGE_EXT_RE.test(report.originalName);
-
-  useEffect(() => {
-    client
-      .get(`/patients/${patientId}/reports/${report._id}/url`)
-      .then((res) => setUrl(res.data.url));
-  }, [patientId, report._id]);
 
   return (
     <div className="report-card">

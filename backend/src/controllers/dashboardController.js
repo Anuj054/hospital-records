@@ -1,35 +1,57 @@
 import Patient from "../models/Patient.js";
 import Bill from "../models/Bill.js";
+import { startOfLocalDay } from "../utils/reportingTime.js";
 
 export async function getStats(req, res) {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const todayStart = startOfLocalDay();
 
-  const [patientsToday, bills] = await Promise.all([
-    Patient.countDocuments({ createdAt: { $gte: startOfDay } }),
-    Bill.find({ isFinalized: true }, "totalAmount payments").lean(),
+  const [patientsToday, [totals]] = await Promise.all([
+    Patient.countDocuments({ createdAt: { $gte: todayStart } }),
+    // Summed inside Mongo rather than by pulling every finalized bill (and
+    // all of its payments) across the wire on each dashboard load.
+    Bill.aggregate([
+      // mergedInto bills were folded into a combined invoice — counting them
+      // here double-counted the same charges, which is why the dashboard
+      // reported bills pending while Finance showed nothing outstanding.
+      { $match: { isFinalized: true, mergedInto: null } },
+      {
+        $project: {
+          totalAmount: 1,
+          paidAmount: { $sum: "$payments.amount" },
+          paidToday: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: "$payments",
+                    as: "p",
+                    cond: { $gte: ["$$p.paidAt", todayStart] },
+                  },
+                },
+                as: "p",
+                in: "$$p.amount",
+              },
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          collectedToday: { $sum: "$paidToday" },
+          billsCollectedTodayCount: { $sum: { $cond: [{ $gt: ["$paidToday", 0] }, 1, 0] } },
+          pendingBills: {
+            $sum: { $cond: [{ $lt: ["$paidAmount", "$totalAmount"] }, 1, 0] },
+          },
+        },
+      },
+    ]),
   ]);
 
-  let collectedToday = 0;
-  let billsCollectedToday = new Set();
-  let pendingBills = 0;
-
-  for (const bill of bills) {
-    const paidAmount = bill.payments.reduce((sum, p) => sum + p.amount, 0);
-    if (paidAmount < bill.totalAmount) pendingBills += 1;
-
-    for (const p of bill.payments) {
-      if (p.paidAt >= startOfDay) {
-        collectedToday += p.amount;
-        billsCollectedToday.add(bill._id.toString());
-      }
-    }
-  }
-
   res.json({
-    collectedToday,
-    billsCollectedTodayCount: billsCollectedToday.size,
+    collectedToday: Math.round((totals?.collectedToday ?? 0) * 100) / 100,
+    billsCollectedTodayCount: totals?.billsCollectedTodayCount ?? 0,
     patientsRegisteredToday: patientsToday,
-    pendingBills,
+    pendingBills: totals?.pendingBills ?? 0,
   });
 }

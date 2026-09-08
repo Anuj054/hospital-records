@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import html2pdf from "html2pdf.js";
 import axios from "axios";
 import Brand from "../components/Brand";
 import { getApiBaseUrl } from "../api/baseUrl";
+import { loadHtml2Pdf } from "../lib/pdf";
 
 const publicClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -17,6 +17,7 @@ export default function SharedPatientView() {
   const { token } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const printRef = useRef(null);
 
   useEffect(() => {
@@ -41,18 +42,23 @@ export default function SharedPatientView() {
   }
 
   async function handleDownload() {
-    await waitForImages();
-    html2pdf()
-      .set({
-        margin: 10,
-        filename: `${data.patient.patientId}-records.pdf`,
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        // each report starts its own page, and bill cards never split mid-table
-        pagebreak: { mode: ["css", "legacy"], before: ".report-pdf-page", avoid: ".card" },
-      })
-      .from(printRef.current)
-      .save();
+    setDownloading(true);
+    try {
+      const [html2pdf] = await Promise.all([loadHtml2Pdf(), waitForImages()]);
+      await html2pdf()
+        .set({
+          margin: 10,
+          filename: `${data.patient.patientId}-records.pdf`,
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          // each report starts its own page, and bill cards never split mid-table
+          pagebreak: { mode: ["css", "legacy"], before: ".report-pdf-page", avoid: ".card" },
+        })
+        .from(printRef.current)
+        .save();
+    } finally {
+      setDownloading(false);
+    }
   }
 
   if (error) {
@@ -76,8 +82,8 @@ export default function SharedPatientView() {
     <div className="shared-page">
       <div className="shared-header no-print">
         <Brand />
-        <button className="btn-primary" onClick={handleDownload}>
-          Download PDF (all bills & reports)
+        <button className="btn-primary" onClick={handleDownload} disabled={downloading}>
+          {downloading ? "Preparing PDF..." : "Download PDF (all bills & reports)"}
         </button>
       </div>
 
@@ -176,7 +182,7 @@ export default function SharedPatientView() {
           <p className="empty-state">No reports uploaded.</p>
         ) : (
           patient.reports.map((r) => (
-            <SharedReportPage key={r._id} token={token} report={r} patient={patient} />
+            <SharedReportPage key={r._id} report={r} patient={patient} />
           ))
         )}
 
@@ -198,19 +204,16 @@ const CATEGORY_LABELS = {
 // One report per printed page: a titled header plus a fixed-size holder that
 // letterboxes the image (object-fit: contain), so nothing is stretched or
 // spills across a page boundary in the downloaded PDF.
-function SharedReportPage({ token, report, patient }) {
-  const [url, setUrl] = useState(null);
+//
+// The signed URL arrives with the share payload (signed in one batch on the
+// server), so there's no per-report request here. The <img> starts loading
+// as soon as this renders, which also means it's ready by the time
+// "Download PDF" snapshots the page — html2pdf can only capture images that
+// have finished loading.
+function SharedReportPage({ report, patient }) {
+  const url = report.url;
   const isImage = isImageReport(report);
   const label = CATEGORY_LABELS[report.category] || report.category;
-
-  useEffect(() => {
-    // Fetch eagerly (not just on click) so the image is already loaded by the
-    // time "Download PDF" snapshots the page — html2pdf can only capture
-    // images that have finished loading.
-    publicClient
-      .get(`/public/share/${token}/reports/${report._id}/url`)
-      .then((res) => setUrl(res.data.url));
-  }, [token, report._id]);
 
   return (
     <section className="report-pdf-page">

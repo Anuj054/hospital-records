@@ -1,72 +1,158 @@
 import Bill from "../models/Bill.js";
+import {
+  TIME_ZONE,
+  recentLocalDayKeys,
+  startOfLocalDay,
+  startOfLocalDaysAgo,
+  startOfLocalMonth,
+} from "../utils/reportingTime.js";
 
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+const DAILY_REVENUE_DAYS = 14;
 
 export async function getFinanceSummary(req, res) {
   const now = new Date();
-  const todayStart = startOfDay(now);
-  const weekStart = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)); // last 7 days incl. today
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const fourteenDaysAgo = startOfDay(new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000));
+  const todayStart = startOfLocalDay(now);
+  const weekStart = startOfLocalDaysAgo(6, now); // last 7 days incl. today
+  const monthStart = startOfLocalMonth(now);
+  const seriesStart = startOfLocalDaysAgo(DAILY_REVENUE_DAYS - 1, now);
 
-  // Only finalized, non-merged bills represent real invoices/revenue.
-  const bills = await Bill.find(
-    { isFinalized: true, mergedInto: null },
-    "totalAmount payments status"
-  ).lean();
+  // One round trip, computed in the database. The previous version read every
+  // finalized bill (with its full payments array) into the function and
+  // reduced in JS — fine at 70 bills, but it grows without bound and the
+  // whole collection had to cross the wire each time the page was opened.
+  const [facets] = await Bill.aggregate([
+    // Only finalized, non-merged bills represent real invoices/revenue.
+    { $match: { isFinalized: true, mergedInto: null } },
+    {
+      $facet: {
+        billTotals: [
+          { $project: { totalAmount: 1, paidAmount: { $sum: "$payments.amount" } } },
+          {
+            $group: {
+              _id: null,
+              finalizedBillCount: { $sum: 1 },
+              totalCollected: { $sum: "$paidAmount" },
+              totalOutstanding: {
+                $sum: { $max: [{ $subtract: ["$totalAmount", "$paidAmount"] }, 0] },
+              },
+              pending: { $sum: { $cond: [{ $lte: ["$paidAmount", 0] }, 1, 0] } },
+              paid: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $gt: ["$paidAmount", 0] },
+                        { $gte: ["$paidAmount", "$totalAmount"] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              partial: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $gt: ["$paidAmount", 0] },
+                        { $lt: ["$paidAmount", "$totalAmount"] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ],
+        collectedWindows: [
+          { $unwind: "$payments" },
+          {
+            $group: {
+              _id: null,
+              collectedToday: {
+                $sum: {
+                  $cond: [{ $gte: ["$payments.paidAt", todayStart] }, "$payments.amount", 0],
+                },
+              },
+              collectedThisWeek: {
+                $sum: {
+                  $cond: [{ $gte: ["$payments.paidAt", weekStart] }, "$payments.amount", 0],
+                },
+              },
+              collectedThisMonth: {
+                $sum: {
+                  $cond: [{ $gte: ["$payments.paidAt", monthStart] }, "$payments.amount", 0],
+                },
+              },
+            },
+          },
+        ],
+        byMethod: [
+          { $unwind: "$payments" },
+          {
+            $group: {
+              _id: { $ifNull: ["$payments.method", "other"] },
+              amount: { $sum: "$payments.amount" },
+            },
+          },
+        ],
+        dailyRevenue: [
+          { $unwind: "$payments" },
+          { $match: { "payments.paidAt": { $gte: seriesStart } } },
+          {
+            $group: {
+              // Bucketed by the hospital's local calendar day, not UTC.
+              _id: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: "$payments.paidAt",
+                  timezone: TIME_ZONE,
+                },
+              },
+              amount: { $sum: "$payments.amount" },
+            },
+          },
+        ],
+      },
+    },
+  ]);
 
-  let totalCollected = 0;
-  let collectedToday = 0;
-  let collectedThisWeek = 0;
-  let collectedThisMonth = 0;
-  let totalOutstanding = 0;
+  const billTotals = facets.billTotals[0] || {};
+  const windows = facets.collectedWindows[0] || {};
+
   const byMethod = { cash: 0, card: 0, upi: 0, other: 0 };
-  const statusCounts = { pending: 0, partial: 0, paid: 0 };
-  const dailyMap = new Map(); // 'YYYY-MM-DD' -> amount
-
-  for (const bill of bills) {
-    const paid = bill.payments.reduce((sum, p) => sum + p.amount, 0);
-    totalCollected += paid;
-    totalOutstanding += Math.max(bill.totalAmount - paid, 0);
-
-    const status = paid <= 0 ? "pending" : paid >= bill.totalAmount ? "paid" : "partial";
-    statusCounts[status] += 1;
-
-    for (const p of bill.payments) {
-      const paidAt = new Date(p.paidAt);
-      byMethod[p.method || "other"] = (byMethod[p.method || "other"] || 0) + p.amount;
-
-      if (paidAt >= todayStart) collectedToday += p.amount;
-      if (paidAt >= weekStart) collectedThisWeek += p.amount;
-      if (paidAt >= monthStart) collectedThisMonth += p.amount;
-
-      if (paidAt >= fourteenDaysAgo) {
-        const key = startOfDay(paidAt).toISOString().slice(0, 10);
-        dailyMap.set(key, (dailyMap.get(key) || 0) + p.amount);
-      }
-    }
+  for (const row of facets.byMethod) {
+    byMethod[row._id] = (byMethod[row._id] || 0) + round2(row.amount);
   }
 
-  const dailyRevenue = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = startOfDay(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
-    const key = d.toISOString().slice(0, 10);
-    dailyRevenue.push({ date: key, amount: dailyMap.get(key) || 0 });
-  }
+  const amountByDay = new Map(facets.dailyRevenue.map((r) => [r._id, r.amount]));
+  const dailyRevenue = recentLocalDayKeys(DAILY_REVENUE_DAYS, now).map((date) => ({
+    date,
+    amount: round2(amountByDay.get(date) || 0),
+  }));
 
   res.json({
-    totalCollected,
-    collectedToday,
-    collectedThisWeek,
-    collectedThisMonth,
-    totalOutstanding,
+    totalCollected: round2(billTotals.totalCollected || 0),
+    collectedToday: round2(windows.collectedToday || 0),
+    collectedThisWeek: round2(windows.collectedThisWeek || 0),
+    collectedThisMonth: round2(windows.collectedThisMonth || 0),
+    totalOutstanding: round2(billTotals.totalOutstanding || 0),
     byMethod,
-    statusCounts,
+    statusCounts: {
+      pending: billTotals.pending || 0,
+      partial: billTotals.partial || 0,
+      paid: billTotals.paid || 0,
+    },
     dailyRevenue,
-    finalizedBillCount: bills.length,
+    finalizedBillCount: billTotals.finalizedBillCount || 0,
   });
+}
+
+// Summing floats in Mongo can leave trailing 0.000000001s; these are rupee
+// figures shown verbatim in the UI.
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }

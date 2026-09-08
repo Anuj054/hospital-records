@@ -1,6 +1,7 @@
 import Patient from "../models/Patient.js";
 import Bill from "../models/Bill.js";
 import { generateBillNumber } from "../utils/generateBillNumber.js";
+import { withComputed } from "../utils/billComputed.js";
 
 // unitPrice is GST-INCLUSIVE (e.g. MRP-style pricing) — GST is backed out
 // of amount rather than added on top, so amount never changes with gstPercent.
@@ -25,24 +26,6 @@ function recomputeTotals(bill) {
   bill.totalAmount = bill.items.reduce((sum, i) => sum + i.amount, 0); // inclusive, what's charged
   bill.gstAmount = bill.items.reduce((sum, i) => sum + i.gstAmount, 0); // backed out of totalAmount
   bill.subtotal = bill.totalAmount - bill.gstAmount; // taxable value
-}
-
-// Mirrors the Bill schema's virtuals for plain .lean() objects (which skip
-// Mongoose document hydration — cheaper for read-only responses, but that
-// means no getters, so we attach the same computed fields by hand).
-function withComputed(bill) {
-  const paidAmount = bill.payments.reduce((sum, p) => sum + p.amount, 0);
-  const balance = Math.max(bill.totalAmount - paidAmount, 0);
-  const status = bill.mergedInto
-    ? "merged"
-    : !bill.isFinalized
-    ? "draft"
-    : paidAmount <= 0
-    ? "pending"
-    : paidAmount >= bill.totalAmount
-    ? "paid"
-    : "partial";
-  return { ...bill, id: bill._id, paidAmount, balance, status };
 }
 
 // Get the patient's current open draft, or null.

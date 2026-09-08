@@ -16,17 +16,23 @@ const reportSchema = new mongoose.Schema(
 
 const patientSchema = new mongoose.Schema(
   {
-    patientId: { type: String, required: true, unique: true, index: true },
+    // unique: true already creates the index; adding index: true as well
+    // makes Mongoose declare it twice and warn about the duplicate.
+    patientId: { type: String, required: true, unique: true },
     name: { type: String, required: true, trim: true },
-    age: { type: Number },
+    age: { type: Number, min: 0, max: 130 },
     gender: { type: String, enum: ["male", "female", "other"] },
     phone: { type: String, trim: true },
     address: { type: String, trim: true },
     reports: [reportSchema],
-    shareToken: { type: String, index: true, unique: true, sparse: true },
+    shareToken: { type: String, unique: true, sparse: true },
     shareTokenExpiresAt: { type: Date },
   },
   { timestamps: true }
 );
+
+// Backs the default patient list (newest first) and the dashboard's
+// "registered today" count.
+patientSchema.index({ createdAt: -1 });
 
 export default mongoose.model("Patient", patientSchema);

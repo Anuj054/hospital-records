@@ -52,12 +52,21 @@ const billSchema = new mongoose.Schema(
   }
 );
 
-// Serves both general patientId lookups (index prefix) and, via the partial
-// filter, enforces at most one open draft per patient at a time.
+// Enforces at most one open draft per patient. Note this index contains
+// ONLY draft documents (that's what partialFilterExpression means), so it
+// cannot serve lookups for a patient's finalized bills — those need the
+// index below.
 billSchema.index(
   { patientId: 1, isFinalized: 1 },
   { unique: true, partialFilterExpression: { isFinalized: false } }
 );
+
+// The hot read path: every bill for one patient, newest first.
+billSchema.index({ patientId: 1, date: -1 });
+
+// Backs the finance and dashboard aggregations, which both match on
+// exactly this pair before doing any work.
+billSchema.index({ isFinalized: 1, mergedInto: 1 });
 
 billSchema.virtual("paidAmount").get(function () {
   return this.payments.reduce((sum, p) => sum + p.amount, 0);

@@ -2,7 +2,9 @@ import mongoose from "mongoose";
 
 const serviceSchema = new mongoose.Schema(
   {
-    itemCode: { type: String, required: true, unique: true, index: true },
+    // unique: true already creates the index — index: true would declare a
+    // second, identical one.
+    itemCode: { type: String, required: true, unique: true },
     name: { type: String, required: true, trim: true },
     category: {
       type: String,
@@ -14,5 +16,9 @@ const serviceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// The catalog is always read sorted by name; without this Mongo sorts the
+// whole collection in memory on every request.
+serviceSchema.index({ name: 1 });
 
 export default mongoose.model("Service", serviceSchema);

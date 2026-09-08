@@ -1,6 +1,6 @@
-import { parse } from "csv-parse/sync";
 import Service from "../models/Service.js";
-import { generateItemCode } from "../utils/generateItemCode.js";
+import { generateItemCode, reserveItemCodes } from "../utils/generateItemCode.js";
+import { escapeRegex } from "../utils/escapeRegex.js";
 
 const CATEGORIES = ["operation", "consultation", "lab", "other"];
 
@@ -23,7 +23,10 @@ export async function createService(req, res) {
 export async function listServices(req, res) {
   const { q } = req.query;
   const filter = q
-    ? { $or: [{ name: new RegExp(q, "i") }, { itemCode: new RegExp(q, "i") }] }
+    ? (() => {
+        const rx = new RegExp(escapeRegex(q.trim()), "i");
+        return { $or: [{ name: rx }, { itemCode: rx }] };
+      })()
     : {};
   const services = await Service.find(filter).sort({ name: 1 }).lean();
   res.json(services);
@@ -49,6 +52,10 @@ export async function deleteService(req, res) {
 export async function bulkImportServices(req, res) {
   if (!req.file) return res.status(400).json({ message: "No CSV file uploaded" });
 
+  // csv-parse is only needed by the two bulk-import endpoints, so it stays
+  // off the cold-start import graph.
+  const { parse } = await import("csv-parse/sync");
+
   let rows;
   try {
     rows = parse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true });
@@ -56,7 +63,7 @@ export async function bulkImportServices(req, res) {
     return res.status(400).json({ message: `Could not parse CSV: ${err.message}` });
   }
 
-  const created = [];
+  const valid = [];
   const skipped = [];
 
   for (const [i, row] of rows.entries()) {
@@ -67,14 +74,17 @@ export async function bulkImportServices(req, res) {
       skipped.push({ row: i + 2, reason: "missing/invalid name or defaultPrice" });
       continue;
     }
-    created.push({
-      itemCode: await generateItemCode("SRV"),
+    valid.push({
       name,
       category: CATEGORIES.includes(category) ? category : "other",
       defaultPrice,
       gstPercent: Number(row.gstPercent) || 0,
     });
   }
+
+  // One counter round trip for the whole file rather than one per row.
+  const codes = await reserveItemCodes("SRV", valid.length);
+  const created = valid.map((s, i) => ({ ...s, itemCode: codes[i] }));
 
   const inserted = created.length ? await Service.insertMany(created) : [];
 

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import client from "../api/client";
+import { clearCatalogCache } from "../api/catalogCache";
 
 const AuthContext = createContext(null);
 
@@ -30,6 +31,7 @@ export function AuthProvider({ children }) {
 
   async function logout() {
     await client.post("/auth/logout");
+    clearCatalogCache(); // don't leak one account's catalog into the next session
     setUsername(null);
     setRole(null);
   }

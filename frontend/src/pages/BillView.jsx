@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import html2pdf from "html2pdf.js";
 import client from "../api/client";
+import { loadHtml2Pdf } from "../lib/pdf";
 
 export default function BillView() {
   const { billId } = useParams();
   const [bill, setBill] = useState(null);
   const [patient, setPatient] = useState(null);
   const [settings, setSettings] = useState(null);
+  const [downloading, setDownloading] = useState(false);
   const printRef = useRef(null);
   const navigate = useNavigate();
 
@@ -26,16 +27,22 @@ export default function BillView() {
     load();
   }, [billId]);
 
-  function handleDownload() {
-    html2pdf()
-      .set({
-        margin: 10,
-        filename: `${bill.billNumber}.pdf`,
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      })
-      .from(printRef.current)
-      .save();
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const html2pdf = await loadHtml2Pdf();
+      await html2pdf()
+        .set({
+          margin: 10,
+          filename: `${bill.billNumber}.pdf`,
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        })
+        .from(printRef.current)
+        .save();
+    } finally {
+      setDownloading(false);
+    }
   }
 
   if (!bill || !patient || !settings) return <p>Loading...</p>;
@@ -46,8 +53,8 @@ export default function BillView() {
         <button className="btn-link" onClick={() => navigate(-1)}>
           &larr; Back
         </button>
-        <button className="btn-primary" onClick={handleDownload}>
-          Download PDF
+        <button className="btn-primary" onClick={handleDownload} disabled={downloading}>
+          {downloading ? "Preparing PDF..." : "Download PDF"}
         </button>
       </div>
 

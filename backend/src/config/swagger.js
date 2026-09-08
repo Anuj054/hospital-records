@@ -1,12 +1,12 @@
-import swaggerJSDoc from "swagger-jsdoc";
-
-// Computed lazily (glob + parse every route file's JSDoc) since it's only
-// needed by the rare /api-docs request — paying that cost on every cold
-// start/import would slow down every other API call for nothing.
+// Both the spec and the swagger-jsdoc dependency itself are loaded lazily:
+// generating the spec globs and parses every route file's JSDoc, and the
+// library pulls in a sizeable dependency tree. Only /api-docs needs either,
+// so keeping them off the module graph shortens every cold start.
 let cached = null;
 
-export function getSwaggerSpec() {
+export async function getSwaggerSpec() {
   if (!cached) {
+    const { default: swaggerJSDoc } = await import("swagger-jsdoc");
     cached = swaggerJSDoc({
       definition: {
         openapi: "3.0.0",

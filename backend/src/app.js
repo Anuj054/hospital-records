@@ -4,9 +4,6 @@ import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import swaggerUi from "swagger-ui-express";
-
-import { getSwaggerSpec } from "./config/swagger.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import patientRoutes from "./routes/patient.routes.js";
@@ -21,6 +18,7 @@ import doctorRoutes from "./routes/doctor.routes.js";
 import financeRoutes from "./routes/finance.routes.js";
 
 const app = express();
+const isProd = process.env.NODE_ENV === "production";
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -34,18 +32,42 @@ app.use(
       callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    // Frontend and backend sit on different domains, so every POST/PUT/DELETE
+    // is preceded by an OPTIONS preflight — a full extra round trip. Letting
+    // the browser cache the preflight removes it from all but the first
+    // write of a session. Browsers clamp this themselves (Chrome at 2h).
+    maxAge: 86400,
   })
 );
 app.use(compression());
 app.use(express.json());
 app.use(cookieParser());
-app.use(morgan("dev"));
+// Request logging is a per-request write we don't need in production, where
+// Vercel already records invocations.
+if (!isProd) app.use(morgan("dev"));
 
-// Spec is generated lazily on first hit (see getSwaggerSpec), not at import
-// time, so routes other than /api-docs don't pay for globbing+parsing every
-// route file's JSDoc on cold start.
-app.use("/api-docs", swaggerUi.serve);
-app.get("/api-docs", (req, res, next) => swaggerUi.setup(getSwaggerSpec())(req, res, next));
+// swagger-ui-express and swagger-jsdoc (which globs and parses every route
+// file's JSDoc) are imported only when /api-docs is actually hit, so they
+// stay off the cold-start import path that every other request pays for.
+// The assembled router is cached, so only the first docs hit is slow.
+let docsRouter = null;
+async function getDocsRouter() {
+  if (!docsRouter) {
+    const [{ default: swaggerUi }, { getSwaggerSpec }] = await Promise.all([
+      import("swagger-ui-express"),
+      import("./config/swagger.js"),
+    ]);
+    docsRouter = express.Router();
+    docsRouter.use(swaggerUi.serve, swaggerUi.setup(await getSwaggerSpec()));
+  }
+  return docsRouter;
+}
+
+app.use("/api-docs", (req, res, next) => {
+  getDocsRouter()
+    .then((router) => router(req, res, next))
+    .catch(next);
+});
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

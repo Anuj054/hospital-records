@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import Patient from "../models/Patient.js";
 import Bill from "../models/Bill.js";
-import { getReportSignedUrl } from "../utils/reportsStorage.js";
+import { getReportSignedUrl, getReportSignedUrls } from "../utils/reportsStorage.js";
+import { withComputed } from "../utils/billComputed.js";
 
 const SHARE_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -31,7 +32,10 @@ export async function revokeShareLink(req, res) {
 }
 
 export async function getShareStatus(req, res) {
-  const patient = await Patient.findOne({ patientId: req.params.patientId });
+  const patient = await Patient.findOne(
+    { patientId: req.params.patientId },
+    "shareToken shareTokenExpiresAt"
+  ).lean();
   if (!patient) return res.status(404).json({ message: "Patient not found" });
 
   const active = !!patient.shareToken && patient.shareTokenExpiresAt > new Date();
@@ -43,19 +47,33 @@ export async function getShareStatus(req, res) {
 }
 
 async function findActivePatientByToken(token) {
-  const patient = await Patient.findOne({ shareToken: token });
-  if (!patient) return null;
-  if (!patient.shareTokenExpiresAt || patient.shareTokenExpiresAt <= new Date()) return null;
-  return patient;
+  // Expiry is part of the query so an expired link never loads the record.
+  const patient = await Patient.findOne({
+    shareToken: token,
+    shareTokenExpiresAt: { $gt: new Date() },
+  }).lean();
+  return patient || null;
 }
 
 export async function getSharedPatientData(req, res) {
   const patient = await findActivePatientByToken(req.params.token);
   if (!patient) return res.status(404).json({ message: "Link not found or expired" });
 
-  const bills = await Bill.find({ patientId: patient.patientId, isFinalized: true }).sort({
-    date: -1,
-  });
+  const bills = await Bill.find({
+    patientId: patient.patientId,
+    isFinalized: true,
+    // Bills that were folded into a combined invoice must not be shown: the
+    // patient would see both the originals and the combined bill and think
+    // they owe the sum of both.
+    mergedInto: null,
+  })
+    .sort({ date: -1 })
+    .lean();
+
+  // Signed in one Supabase call and returned with the payload, so the share
+  // page renders every report from a single request instead of firing one
+  // request per report after mount.
+  const reportUrls = await getReportSignedUrls(patient.reports.map((r) => r.storedPath));
 
   res.json({
     patient: {
@@ -68,9 +86,10 @@ export async function getSharedPatientData(req, res) {
         category: r.category,
         originalName: r.originalName,
         uploadedAt: r.uploadedAt,
+        url: reportUrls[r.storedPath] || null,
       })),
     },
-    bills,
+    bills: bills.map(withComputed),
     expiresAt: patient.shareTokenExpiresAt,
   });
 }
