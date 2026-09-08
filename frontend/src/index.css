@@ -688,6 +688,77 @@ h3 {
   align-self: flex-start;
 }
 
+/* ---------- One-report-per-page blocks (shared view + its PDF) ---------- */
+
+.report-pdf-page {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  page-break-before: always;
+  break-before: page;
+}
+
+.report-pdf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+.report-pdf-header h3 {
+  margin: 0 0 2px;
+  font-size: 19px;
+}
+
+.report-pdf-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.report-pdf-date {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Fixed-height letterbox: the image is centred and scaled to fit without
+   distortion, and the block's height is stable so a page break lands
+   cleanly between reports rather than mid-image. */
+.report-pdf-holder {
+  height: 880px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f6f4;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.report-pdf-holder img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.report-pdf-attachment {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.report-pdf-attachment p {
+  margin: 0 0 6px;
+}
+
 .reports-card {
   margin-bottom: 20px;
 }

@@ -48,6 +48,8 @@ export default function SharedPatientView() {
         filename: `${data.patient.patientId}-records.pdf`,
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        // each report starts its own page, and bill cards never split mid-table
+        pagebreak: { mode: ["css", "legacy"], before: ".report-pdf-page", avoid: ".card" },
       })
       .from(printRef.current)
       .save();
@@ -173,11 +175,9 @@ export default function SharedPatientView() {
         {patient.reports.length === 0 ? (
           <p className="empty-state">No reports uploaded.</p>
         ) : (
-          <ul className="report-list">
-            {patient.reports.map((r) => (
-              <SharedReportRow key={r._id} token={token} report={r} />
-            ))}
-          </ul>
+          patient.reports.map((r) => (
+            <SharedReportPage key={r._id} token={token} report={r} patient={patient} />
+          ))
         )}
 
         <p className="bill-footer no-print">
@@ -188,9 +188,20 @@ export default function SharedPatientView() {
   );
 }
 
-function SharedReportRow({ token, report }) {
+const CATEGORY_LABELS = {
+  xray: "X-Ray",
+  "blood test": "Blood Test",
+  scan: "Scan",
+  other: "Other Report",
+};
+
+// One report per printed page: a titled header plus a fixed-size holder that
+// letterboxes the image (object-fit: contain), so nothing is stretched or
+// spills across a page boundary in the downloaded PDF.
+function SharedReportPage({ token, report, patient }) {
   const [url, setUrl] = useState(null);
   const isImage = isImageReport(report);
+  const label = CATEGORY_LABELS[report.category] || report.category;
 
   useEffect(() => {
     // Fetch eagerly (not just on click) so the image is already loaded by the
@@ -202,25 +213,38 @@ function SharedReportRow({ token, report }) {
   }, [token, report._id]);
 
   return (
-    <li className="report-row report-row-media">
-      <div className="report-row-header">
-        <span className="report-category">{report.category}</span>
-        <span>{report.originalName}</span>
-        <span className="report-date">{new Date(report.uploadedAt).toLocaleDateString()}</span>
-        {!isImage &&
-          (url ? (
-            <a className="btn-link no-print" href={url} target="_blank" rel="noopener noreferrer">
-              View PDF
-            </a>
-          ) : (
-            <span className="btn-link no-print">Loading...</span>
-          ))}
-      </div>
-      {isImage && (
-        <div className="report-thumb">
-          {url ? <img src={url} alt={report.originalName} /> : <p className="empty-state">Loading image...</p>}
+    <section className="report-pdf-page">
+      <div className="report-pdf-header">
+        <div>
+          <h3>{label}</h3>
+          <p className="report-pdf-meta">
+            {patient.name} ({patient.patientId}) &middot; {report.originalName}
+          </p>
         </div>
-      )}
-    </li>
+        <span className="report-pdf-date">{new Date(report.uploadedAt).toLocaleDateString()}</span>
+      </div>
+
+      <div className="report-pdf-holder">
+        {isImage ? (
+          url ? (
+            <img src={url} alt={`${label} — ${report.originalName}`} />
+          ) : (
+            <p className="empty-state">Loading image...</p>
+          )
+        ) : (
+          <div className="report-pdf-attachment">
+            <p>
+              <strong>{report.originalName}</strong>
+            </p>
+            <p>PDF attachment — open it separately to view.</p>
+            {url && (
+              <a className="btn-link no-print" href={url} target="_blank" rel="noopener noreferrer">
+                View PDF
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

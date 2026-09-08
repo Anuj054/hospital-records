@@ -38,17 +38,22 @@ export default function SearchableSelect({ options, placeholder, onSelect, value
 
   useEffect(() => {
     if (!open) return;
-    // Popovers anchored like this don't track scroll smoothly, so just
-    // close on scroll (any ancestor, hence capture:true) rather than
-    // fighting to keep it aligned.
-    function handleScroll() {
-      setOpen(false);
+    // Since the list is viewport-positioned, it has to be re-anchored to the
+    // input whenever anything scrolls (capture:true to catch scrolling
+    // ancestors, not just the window) or the window resizes. Skip the list's
+    // own internal overflow scrolling — that fires "scroll" too, and moving
+    // the list while someone scrolls through its options would fight them.
+    function reposition(e) {
+      if (e?.target?.closest?.(".searchable-select-list")) return;
+      if (!inputRef.current) return;
+      const rect = inputRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom, left: rect.left, width: rect.width });
     }
-    window.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", handleScroll);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
-      window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
   }, [open]);
 
