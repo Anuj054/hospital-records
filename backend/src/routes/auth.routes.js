@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { login, logout, me } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
+import { checkLoginRateLimit } from "../middleware/loginRateLimit.js";
 
 const router = Router();
 
@@ -23,8 +24,9 @@ const router = Router();
  *     responses:
  *       200: { description: Logged in, sets httpOnly cookie }
  *       401: { description: Invalid credentials }
+ *       429: { description: "Too many failed attempts; see Retry-After" }
  */
-router.post("/login", login);
+router.post("/login", checkLoginRateLimit, login);
 
 /**
  * @openapi
