@@ -18,6 +18,32 @@ export async function deleteReportFile(storagePath) {
   if (error) console.error(`Supabase delete failed for ${storagePath}: ${error.message}`);
 }
 
+// Removes many objects in one call. Unlike deleteReportFile this throws on
+// failure: it backs the admin purge, where silently leaving a patient's
+// x-rays in storage after reporting their record deleted would be worse
+// than surfacing the error.
+export async function deleteReportFiles(storagePaths) {
+  if (!storagePaths.length) return 0;
+
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.storage.from(REPORTS_BUCKET).remove(storagePaths);
+  if (error) throw new Error(`Supabase delete failed: ${error.message}`);
+  return data?.length ?? 0;
+}
+
+// Everything actually sitting under a patient's storage prefix. The purge
+// uses this alongside the paths recorded in Mongo so that a file whose
+// database row went missing at some point still gets cleaned up rather than
+// lingering in the bucket forever.
+export async function listPatientReportFiles(patientId) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.storage.from(REPORTS_BUCKET).list(patientId, {
+    limit: 1000,
+  });
+  if (error) throw new Error(`Supabase list failed for ${patientId}: ${error.message}`);
+  return (data || []).filter((f) => f.id).map((f) => `${patientId}/${f.name}`);
+}
+
 export async function getReportSignedUrl(storagePath) {
   const supabase = await getSupabase();
   const { data, error } = await supabase.storage

@@ -16,6 +16,7 @@ import publicRoutes from "./routes/public.routes.js";
 import staffRoutes from "./routes/staff.routes.js";
 import doctorRoutes from "./routes/doctor.routes.js";
 import financeRoutes from "./routes/finance.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 const app = express();
 const isProd = process.env.NODE_ENV === "production";
@@ -80,6 +81,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/finance", financeRoutes);
+app.use("/api/admin", adminRoutes); // backup + irreversible purge, admin only
 app.use("/api/public", publicRoutes); // unauthenticated, token-scoped share links
 app.use("/api", billRoutes); // exposes /api/patients/:id/bills and /api/bills/:id
 

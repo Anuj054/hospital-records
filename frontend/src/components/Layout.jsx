@@ -52,6 +52,7 @@ export default function Layout() {
           <NavLink to="/catalog">Medicines & Services</NavLink>
           {role === "admin" && <NavLink to="/finance">Finance</NavLink>}
           {role === "admin" && <NavLink to="/staff">Staff</NavLink>}
+          {role === "admin" && <NavLink to="/admin-data">Backup &amp; Data</NavLink>}
         </nav>
         <div className="sidebar-user">
           <div className="sidebar-avatar">{initials}</div>

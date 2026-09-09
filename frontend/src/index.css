@@ -1360,3 +1360,123 @@ h3 {
     padding: 32px 24px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Admin backup & purge (pages/AdminData.jsx)
+   Appended after the mobile media query above, so these rules carry their
+   own small-screen handling rather than relying on it.
+   --------------------------------------------------------------------------- */
+
+.alert-success {
+  background: #e4efe9;
+  color: var(--accent-deep);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.btn-danger {
+  cursor: pointer;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  background: var(--brick);
+  color: #fff;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -4px 0 14px;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Confirmation dialog for an irreversible delete. Fixed to the viewport so
+   it can't be scrolled away from mid-decision. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(22, 35, 61, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-card h3 {
+  margin: 0;
+}
+
+.modal-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.modal-card input[type="text"],
+.modal-card input:not([type]) {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+.modal-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.modal-check input {
+  width: auto;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 860px) {
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+
+  .admin-row-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

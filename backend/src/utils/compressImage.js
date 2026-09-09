@@ -14,14 +14,26 @@ function loadSharp() {
 // storage small without visibly hurting readability.
 export async function compressImage(buffer) {
   const sharp = await loadSharp();
-  return sharp(buffer)
-    .rotate() // respect EXIF orientation before stripping it
-    .resize({
-      width: MAX_DIMENSION,
-      height: MAX_DIMENSION,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .jpeg({ quality: JPEG_QUALITY })
-    .toBuffer();
+  try {
+    return await sharp(buffer)
+      .rotate() // respect EXIF orientation before stripping it
+      .resize({
+        width: MAX_DIMENSION,
+        height: MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toBuffer();
+  } catch (err) {
+    // A truncated or malformed upload is the caller's problem, not a server
+    // fault — without this, sharp's decode error surfaced as a bare 500
+    // reading "Input buffer has corrupt header: VipsJpeg...".
+    const badImage = new Error(
+      "That image could not be read — it may be corrupt or only partly uploaded. Try again, or re-save the file."
+    );
+    badImage.status = 400;
+    badImage.cause = err;
+    throw badImage;
+  }
 }

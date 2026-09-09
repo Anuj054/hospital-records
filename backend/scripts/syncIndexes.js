@@ -16,6 +16,7 @@ import "../src/models/Doctor.js";
 import "../src/models/Staff.js";
 import "../src/models/Counter.js";
 import "../src/models/LoginAttempt.js";
+import "../src/models/DeletionLog.js";
 
 await connectDB();
 

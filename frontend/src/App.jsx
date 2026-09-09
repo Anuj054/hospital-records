@@ -14,6 +14,7 @@ const Catalog = lazy(() => import("./pages/Catalog"));
 const BillView = lazy(() => import("./pages/BillView"));
 const Finance = lazy(() => import("./pages/Finance"));
 const Staff = lazy(() => import("./pages/Staff"));
+const AdminData = lazy(() => import("./pages/AdminData"));
 const SharedPatientView = lazy(() => import("./pages/SharedPatientView"));
 
 export default function App() {
@@ -47,6 +48,14 @@ export default function App() {
               element={
                 <ProtectedRoute roles={["admin"]}>
                   <Staff />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin-data"
+              element={
+                <ProtectedRoute roles={["admin"]}>
+                  <AdminData />
                 </ProtectedRoute>
               }
             />
