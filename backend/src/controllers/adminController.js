@@ -12,38 +12,192 @@ import {
   listPatientReportFiles,
 } from "../utils/reportsStorage.js";
 
+// One archive-and-purge run handles at most this many patients. It keeps the
+// JSON response clear of the ~4.5MB serverless cap and the whole operation
+// inside the function time limit; the UI just says to run it again for the
+// remainder.
+const MAX_BATCH = 100;
+
+// "Old" has to mean last activity, not registration date. Filtering on
+// createdAt would purge someone who registered three months ago and is
+// currently admitted with an open bill. lastActivityAt is the latest of:
+// registration, any edit to the record, the most recent bill, and the most
+// recent report upload.
+function purgeCandidatePipeline(before) {
+  return [
+    {
+      $lookup: {
+        from: "bills",
+        localField: "patientId",
+        foreignField: "patientId",
+        as: "bills",
+      },
+    },
+    {
+      $addFields: {
+        lastBillAt: {
+          $max: {
+            $map: {
+              input: "$bills",
+              as: "b",
+              in: { $ifNull: ["$$b.finalizedAt", "$$b.date"] },
+            },
+          },
+        },
+        lastReportAt: { $max: "$reports.uploadedAt" },
+        billCount: { $size: "$bills" },
+        reportCount: { $size: "$reports" },
+        draftCount: {
+          $size: {
+            $filter: { input: "$bills", as: "b", cond: { $eq: ["$$b.isFinalized", false] } },
+          },
+        },
+        // Money still owed, counting only real invoices (finalized, not
+        // folded into a combined bill).
+        outstanding: {
+          $sum: {
+            $map: {
+              input: {
+                $filter: {
+                  input: "$bills",
+                  as: "b",
+                  cond: {
+                    $and: [
+                      { $eq: ["$$b.isFinalized", true] },
+                      { $eq: ["$$b.mergedInto", null] },
+                    ],
+                  },
+                },
+              },
+              as: "b",
+              in: {
+                $max: [
+                  { $subtract: ["$$b.totalAmount", { $sum: "$$b.payments.amount" }] },
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+    // $max ignores nulls, so patients with no bills or no reports still get a
+    // sensible date from createdAt/updatedAt.
+    {
+      $addFields: {
+        lastActivityAt: { $max: ["$createdAt", "$updatedAt", "$lastBillAt", "$lastReportAt"] },
+      },
+    },
+    { $match: { lastActivityAt: { $lt: before } } },
+    {
+      $project: {
+        patientId: 1,
+        name: 1,
+        lastActivityAt: 1,
+        billCount: 1,
+        reportCount: 1,
+        draftCount: 1,
+        outstanding: { $round: ["$outstanding", 2] },
+      },
+    },
+    { $sort: { lastActivityAt: 1 } }, // oldest first
+  ];
+}
+
+function parseBefore(value) {
+  const before = new Date(value);
+  if (Number.isNaN(before.getTime())) return null;
+  return before;
+}
+
+// What an archive-and-purge for this cutoff would cover, so the admin can
+// see it before anything is written or removed.
+export async function getPurgePreview(req, res) {
+  const before = parseBefore(req.query.before);
+  if (!before) {
+    return res.status(400).json({ message: "before must be a valid date" });
+  }
+
+  const candidates = await Patient.aggregate(purgeCandidatePipeline(before));
+
+  // Anyone who still owes money, or has a bill mid-edit, is held back by
+  // default — purging them would destroy the record of the debt.
+  const withDebt = candidates.filter((c) => c.outstanding > 0 || c.draftCount > 0);
+  const clear = candidates.filter((c) => c.outstanding <= 0 && c.draftCount === 0);
+
+  res.json({
+    before: before.toISOString(),
+    maxBatch: MAX_BATCH,
+    eligible: clear.slice(0, MAX_BATCH),
+    eligibleTotal: clear.length,
+    heldBack: withDebt,
+    totals: {
+      patients: clear.length,
+      bills: clear.reduce((s, c) => s + c.billCount, 0),
+      reportFiles: clear.reduce((s, c) => s + c.reportCount, 0),
+    },
+  });
+}
+
 // Hobby functions cap responses at roughly 4.5MB, so the backup deliberately
 // carries only database rows plus a signed URL per report file. The browser
 // downloads the files itself and assembles the archive (see
 // frontend/src/pages/AdminData.jsx) — that keeps arbitrarily large x-rays
 // out of the function response entirely.
 export async function getBackup(req, res) {
-  const { patientId } = req.query;
+  const { patientId, before, includeUnpaid } = req.query;
 
-  const patientFilter = patientId ? { patientId } : {};
+  let patientFilter = {};
+  let scopedIds = null;
+
+  if (patientId) {
+    patientFilter = { patientId };
+  } else if (before) {
+    // Archive mode: back up exactly the patients this cutoff covers. The
+    // response reports which patients it actually contains, and the client
+    // purges that list rather than re-running the query — otherwise a bill
+    // added between the two calls could change the set and delete someone
+    // who was never in the archive.
+    const cutoff = parseBefore(before);
+    if (!cutoff) return res.status(400).json({ message: "before must be a valid date" });
+
+    let candidates = await Patient.aggregate(purgeCandidatePipeline(cutoff));
+    if (includeUnpaid !== "true") {
+      candidates = candidates.filter((c) => c.outstanding <= 0 && c.draftCount === 0);
+    }
+    scopedIds = candidates.slice(0, MAX_BATCH).map((c) => c.patientId);
+    patientFilter = { patientId: { $in: scopedIds } };
+  }
+
   const patients = await Patient.find(patientFilter).lean();
 
   if (patientId && patients.length === 0) {
     return res.status(404).json({ message: "Patient not found" });
   }
 
-  const billFilter = patientId ? { patientId } : {};
+  const scoped = patientId || scopedIds;
+  const billFilter = patientId
+    ? { patientId }
+    : scopedIds
+    ? { patientId: { $in: scopedIds } }
+    : {};
 
   const [bills, medicines, services, doctors, staff, counters, deletions] = await Promise.all([
     Bill.find(billFilter).lean(),
     // Catalog and reference data go in whole-database backups only; they
-    // aren't part of one patient's record.
-    patientId ? [] : Medicine.find().lean(),
-    patientId ? [] : Service.find().lean(),
-    patientId ? [] : Doctor.find().lean(),
+    // aren't part of a particular patient's record. Included in archive runs
+    // too, so an archive is restorable on its own.
+    scoped && patientId ? [] : Medicine.find().lean(),
+    scoped && patientId ? [] : Service.find().lean(),
+    scoped && patientId ? [] : Doctor.find().lean(),
     // Deliberately excludes passwordHash. A backup lands on a laptop or in
     // cloud storage, and bcrypt hashes of staff passwords do not belong
     // there; staff logins can simply be recreated after a restore.
-    patientId ? [] : Staff.find({}, "username createdAt updatedAt").lean(),
+    scoped && patientId ? [] : Staff.find({}, "username createdAt updatedAt").lean(),
     // Needed for a restore, otherwise the next patient/invoice would reuse
     // an ID that already exists in the restored data.
-    patientId ? [] : Counter.find().lean(),
-    patientId ? [] : DeletionLog.find().lean(),
+    scoped && patientId ? [] : Counter.find().lean(),
+    scoped && patientId ? [] : DeletionLog.find().lean(),
   ]);
 
   // One Supabase call for every report across every patient in scope.
@@ -72,7 +226,15 @@ export async function getBackup(req, res) {
   res.json({
     generatedAt: new Date().toISOString(),
     generatedBy: req.user.username,
-    scope: patientId ? `patient:${patientId}` : "full-database",
+    scope: patientId
+      ? `patient:${patientId}`
+      : scopedIds
+      ? `archive:before-${before}`
+      : "full-database",
+    // The authoritative list of who this archive covers. The purge that
+    // follows must use exactly this, not a fresh query.
+    patientIds: patients.map((p) => p.patientId),
+    truncatedToBatchLimit: !!(scopedIds && scopedIds.length >= MAX_BATCH),
     notes: [
       "Staff password hashes are intentionally excluded.",
       "Report URLs are Supabase signed links valid for 1 hour from generatedAt.",

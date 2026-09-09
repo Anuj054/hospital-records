@@ -1480,3 +1480,81 @@ h3 {
     align-items: flex-start;
   }
 }
+
+/* Archive & clear dialog (the ArchiveDialog in pages/AdminData.jsx) */
+
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-wide {
+  max-width: 640px;
+}
+
+.modal-card select,
+.modal-card input[type="date"] {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.archive-summary {
+  display: flex;
+  gap: 10px;
+}
+
+.archive-summary > div {
+  flex: 1;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.archive-summary .value {
+  font-family: var(--font-heading);
+  font-size: 20px;
+}
+
+.archive-summary .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The candidate list can be long; keep it scrollable so the confirm controls
+   below it stay reachable without scrolling the whole dialog. */
+.archive-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.archive-step2 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.archive-step2 .alert-success {
+  margin-bottom: 0;
+}
+
+/* Failure lists are newline-separated and need to survive as written. */
+.archive-error {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 860px) {
+  .archive-summary {
+    flex-direction: column;
+  }
+}
