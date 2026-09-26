@@ -32,7 +32,6 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *       properties:
  *         billNumber: { type: string, example: "INV-2026-0001", description: "Only set once finalized" }
  *         patientId: { type: string }
- *         doctorName: { type: string }
  *         items:
  *           type: array
  *           items: { $ref: '#/components/schemas/BillItem' }
@@ -92,7 +91,6 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *               items:
  *                 type: array
  *                 items: { $ref: '#/components/schemas/BillItem' }
- *               doctorName: { type: string }
  *               notes: { type: string }
  *     responses:
  *       201: { description: Updated draft bill }

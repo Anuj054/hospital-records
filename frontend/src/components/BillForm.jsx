@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
-import { loadCatalog } from "../api/catalog";
 import { categoryLabel, flattenBillCategories } from "../lib/billCategories";
 
 const ROWS = flattenBillCategories();
@@ -57,10 +56,8 @@ function draftToForm(draft) {
 }
 
 export default function BillForm({ patientId, onSaved }) {
-  const [doctors, setDoctors] = useState([]);
   const [rows, setRows] = useState(emptyRows);
   const [carried, setCarried] = useState([]);
-  const [doctorName, setDoctorName] = useState("");
   const [admission, setAdmission] = useState({
     dateOfAdmission: "",
     dateOfDischarge: "",
@@ -75,11 +72,10 @@ export default function BillForm({ patientId, onSaved }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadCatalog(), client.get(`/patients/${patientId}/bills/draft`)])
-      .then(([{ doctors: docs }, draftRes]) => {
+    client
+      .get(`/patients/${patientId}/bills/draft`)
+      .then((draftRes) => {
         if (!active) return;
-        setDoctors(docs);
-
         // The form sends the whole sheet on save, so it has to open showing
         // what is already on the draft - otherwise saving would wipe it.
         const draft = draftRes.data;
@@ -87,7 +83,6 @@ export default function BillForm({ patientId, onSaved }) {
         setRows(loadedRows);
         setCarried(loadedCarried);
         if (draft) {
-          setDoctorName(draft.doctorName || "");
           setReceivedFrom(draft.receivedFrom || "");
           setNotes(draft.notes || "");
           setAdmission({
@@ -147,7 +142,6 @@ export default function BillForm({ patientId, onSaved }) {
         });
 
       await client.post(`/patients/${patientId}/bills/draft`, {
-        doctorName,
         notes,
         receivedFrom,
         admission,
@@ -177,18 +171,6 @@ export default function BillForm({ patientId, onSaved }) {
       {error && <div className="alert-error">{error}</div>}
 
       <div className="bill-form-header">
-        <label>
-          Doctor / Consultant
-          <select value={doctorName} onChange={(e) => setDoctorName(e.target.value)}>
-            <option value="">-- select doctor --</option>
-            {doctors.map((d) => (
-              <option key={d._id} value={d.name}>
-                {d.name}
-                {d.qualification ? ` (${d.qualification})` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
         <label>
           D.O.A.
           <input

@@ -31,7 +31,6 @@ function recomputeTotals(bill) {
 // The pad's header block. Blank strings clear a field rather than being
 // stored, so clearing a date in the form actually empties it on the bill.
 function applyBillHeader(bill, body) {
-  if (body.doctorName !== undefined) bill.doctorName = body.doctorName;
   if (body.notes !== undefined) bill.notes = body.notes;
   if (body.receivedFrom !== undefined) bill.receivedFrom = body.receivedFrom;
   if (body.admission) {

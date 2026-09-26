@@ -112,7 +112,6 @@ export default function SharedPatientView() {
                 <div>
                   <strong>{bill.billNumber}</strong> &middot;{" "}
                   {new Date(bill.finalizedAt || bill.date).toLocaleString()}
-                  {bill.doctorName && <> &middot; Dr. {bill.doctorName.replace(/^Dr\.?\s*/i, "")}</>}
                 </div>
                 <span className={`pill ${bill.status}`}>{bill.status}</span>
               </div>

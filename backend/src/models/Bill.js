@@ -38,6 +38,8 @@ const billSchema = new mongoose.Schema(
     billNumber: { type: String, unique: true, sparse: true },
     patient: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true },
     patientId: { type: String, required: true }, // denormalized for fast lookup; indexed below
+    // Bills no longer record a doctor. Kept so the name on bills raised
+    // before that is not destroyed; nothing reads or writes it.
     doctorName: { type: String, trim: true },
     items: { type: [billItemSchema], default: [] },
     totalAmount: { type: Number, default: 0, min: 0 }, // sum of item amounts; amount owed

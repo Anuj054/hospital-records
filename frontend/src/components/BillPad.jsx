@@ -193,12 +193,6 @@ export default function BillPad({ bill, patient, settings, printRef }) {
           {bill.payments.map((p) => formatDate(p.paidAt)).join(", ")}
         </span>
       </div>
-      {bill.doctorName && (
-        <div className="pad-field pad-field-half">
-          <span className="pad-label">Doctor</span>
-          <span className="pad-value">{bill.doctorName}</span>
-        </div>
-      )}
       {bill.notes && (
         <div className="pad-field">
           <span className="pad-label">Remarks</span>
