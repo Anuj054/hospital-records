@@ -1,14 +1,21 @@
 import mongoose from "mongoose";
+import { BILL_CATEGORY_SLUGS, DEFAULT_BILL_CATEGORY } from "../constants/billCategories.js";
 
 const billItemSchema = new mongoose.Schema(
   {
     refId: { type: mongoose.Schema.Types.ObjectId }, // Medicine or Service _id, optional for custom items
+    // Which pre-printed line of the bill pad this charge sits on. The printed
+    // bill groups by this, so an item without one lands under "Misc.".
+    category: {
+      type: String,
+      enum: BILL_CATEGORY_SLUGS,
+      default: DEFAULT_BILL_CATEGORY,
+    },
     name: { type: String, required: true },
     quantity: { type: Number, required: true, min: 1, default: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     amount: { type: Number, required: true, min: 0 }, // quantity * unitPrice, captured at billing time
-    gstPercent: { type: Number, default: 0, min: 0, max: 100 },
-    gstAmount: { type: Number, default: 0, min: 0 }, // amount * gstPercent / 100
+    remarks: { type: String, trim: true }, // the pad's REMARKS column
     addedAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -33,9 +40,18 @@ const billSchema = new mongoose.Schema(
     patientId: { type: String, required: true }, // denormalized for fast lookup; indexed below
     doctorName: { type: String, trim: true },
     items: { type: [billItemSchema], default: [] },
-    subtotal: { type: Number, default: 0, min: 0 }, // sum of item amounts, before GST
-    gstAmount: { type: Number, default: 0, min: 0 }, // sum of item GST amounts
-    totalAmount: { type: Number, default: 0, min: 0 }, // subtotal + gstAmount; amount owed
+    totalAmount: { type: Number, default: 0, min: 0 }, // sum of item amounts; amount owed
+    // The pad's D.O.A. / D.O.D. / Time of Admission / T.O.D. block. Held per
+    // bill rather than per patient so a readmission gets its own dates and
+    // reprinting an old bill still shows the stay it was raised for. Times are
+    // free text ("10:30 AM") because that is how they are written on paper.
+    admission: {
+      dateOfAdmission: { type: Date },
+      dateOfDischarge: { type: Date },
+      timeOfAdmission: { type: String, trim: true },
+      timeOfDischarge: { type: String, trim: true },
+    },
+    receivedFrom: { type: String, trim: true }, // "Received with thanks from ....."
     payments: { type: [paymentSchema], default: [] },
     notes: { type: String, trim: true },
     date: { type: Date, default: Date.now }, // when the draft was started

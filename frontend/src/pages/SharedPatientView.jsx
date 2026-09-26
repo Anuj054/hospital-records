@@ -4,6 +4,7 @@ import axios from "axios";
 import Brand from "../components/Brand";
 import { getApiBaseUrl } from "../api/baseUrl";
 import { loadHtml2Pdf } from "../lib/pdf";
+import { categoryLabel } from "../lib/billCategories";
 
 const publicClient = axios.create({
   baseURL: getApiBaseUrl(),
@@ -119,39 +120,25 @@ export default function SharedPatientView() {
                 <table className="bill-print-table">
                   <thead>
                     <tr>
+                      <th>Bill line</th>
                       <th>Item</th>
                       <th>Qty</th>
-                      <th>Unit Price</th>
-                      <th>GST %</th>
+                      <th>Rate</th>
                       <th>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {bill.items.map((item, i) => (
                       <tr key={i}>
+                        <td>{categoryLabel(item.category, "Misc.")}</td>
                         <td>{item.name}</td>
                         <td>{item.quantity}</td>
                         <td>₹{item.unitPrice.toFixed(2)}</td>
-                        <td>{item.gstPercent || 0}%</td>
                         <td>₹{item.amount.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr>
-                      <td colSpan="4" className="bill-total-label">
-                        Subtotal
-                      </td>
-                      <td className="bill-total-value">₹{bill.subtotal.toFixed(2)}</td>
-                    </tr>
-                    {bill.gstAmount > 0 && (
-                      <tr>
-                        <td colSpan="4" className="bill-total-label">
-                          GST
-                        </td>
-                        <td className="bill-total-value">₹{bill.gstAmount.toFixed(2)}</td>
-                      </tr>
-                    )}
                     <tr>
                       <td colSpan="4" className="bill-total-label">
                         Total

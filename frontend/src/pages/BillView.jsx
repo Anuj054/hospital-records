@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
 import { loadHtml2Pdf } from "../lib/pdf";
+import BillPad from "../components/BillPad";
 
 export default function BillView() {
   const { billId } = useParams();
@@ -58,107 +59,7 @@ export default function BillView() {
         </button>
       </div>
 
-      <div className="bill-template" ref={printRef}>
-        <div className="bill-header">
-          <h1>{settings.hospitalName}</h1>
-          {settings.address && <p>{settings.address}</p>}
-          {settings.phone && <p>Phone: {settings.phone}</p>}
-          {settings.gstNo && <p>GSTIN: {settings.gstNo}</p>}
-        </div>
-
-        <hr />
-
-        <div className="bill-meta">
-          <div>
-            <strong>Invoice #:</strong> {bill.billNumber}
-          </div>
-          <div>
-            <strong>Date:</strong> {new Date(bill.finalizedAt || bill.date).toLocaleString()}
-          </div>
-        </div>
-        <div className="bill-meta">
-          <div>
-            <strong>Patient:</strong> {patient.name} ({patient.patientId})
-          </div>
-          {bill.doctorName && (
-            <div>
-              <strong>Doctor:</strong> {bill.doctorName}
-            </div>
-          )}
-        </div>
-
-        <div className="table-x-scroll">
-          <table className="bill-print-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>GST %</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bill.items.map((item, i) => (
-                <tr key={i}>
-                  <td>{i + 1}</td>
-                  <td>{item.name}</td>
-                  <td>{item.quantity}</td>
-                  <td>₹{item.unitPrice.toFixed(2)}</td>
-                  <td>{item.gstPercent || 0}%</td>
-                  <td>₹{item.amount.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan="5" className="bill-total-label">
-                  Subtotal
-                </td>
-                <td className="bill-total-value">₹{bill.subtotal.toFixed(2)}</td>
-              </tr>
-              {bill.gstAmount > 0 && (
-                <tr>
-                  <td colSpan="5" className="bill-total-label">
-                    GST
-                  </td>
-                  <td className="bill-total-value">₹{bill.gstAmount.toFixed(2)}</td>
-                </tr>
-              )}
-              <tr>
-                <td colSpan="5" className="bill-total-label">
-                  Total
-                </td>
-                <td className="bill-total-value">₹{bill.totalAmount.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {bill.notes && (
-          <p className="bill-notes">
-            <strong>Notes:</strong> {bill.notes}
-          </p>
-        )}
-
-        <div className="signature-row">
-          <div className="signature-box">
-            <div className="signature-line" />
-            <p>Patient / Attendant Signature</p>
-          </div>
-          <div className="signature-box">
-            <div className="signature-line" />
-            <p>
-              For {settings.hospitalName}
-              <br />
-              (Signature &amp; Stamp)
-            </p>
-          </div>
-        </div>
-
-        <p className="bill-footer">Thank you for choosing {settings.hospitalName}.</p>
-      </div>
+      <BillPad bill={bill} patient={patient} settings={settings} printRef={printRef} />
 
       <PaymentLedger bill={bill} onChange={load} />
     </div>

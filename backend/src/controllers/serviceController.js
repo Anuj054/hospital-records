@@ -5,7 +5,7 @@ import { escapeRegex } from "../utils/escapeRegex.js";
 const CATEGORIES = ["operation", "consultation", "lab", "other"];
 
 export async function createService(req, res) {
-  const { name, category, defaultPrice, gstPercent } = req.body;
+  const { name, category, defaultPrice } = req.body;
   if (!name || defaultPrice == null) {
     return res.status(400).json({ message: "name and defaultPrice are required" });
   }
@@ -15,7 +15,6 @@ export async function createService(req, res) {
     name,
     category: category?.toLowerCase(),
     defaultPrice,
-    gstPercent: gstPercent || 0,
   });
   res.status(201).json(service);
 }
@@ -33,10 +32,10 @@ export async function listServices(req, res) {
 }
 
 export async function updateService(req, res) {
-  const { name, category, defaultPrice, gstPercent } = req.body;
+  const { name, category, defaultPrice } = req.body;
   const service = await Service.findByIdAndUpdate(
     req.params.id,
-    { name, category: category?.toLowerCase(), defaultPrice, gstPercent },
+    { name, category: category?.toLowerCase(), defaultPrice },
     { new: true, runValidators: true }
   );
   if (!service) return res.status(404).json({ message: "Service not found" });
@@ -78,7 +77,6 @@ export async function bulkImportServices(req, res) {
       name,
       category: CATEGORIES.includes(category) ? category : "other",
       defaultPrice,
-      gstPercent: Number(row.gstPercent) || 0,
     });
   }
 

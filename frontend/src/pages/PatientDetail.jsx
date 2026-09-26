@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
 import BillForm from "../components/BillForm";
+import { categoryLabel } from "../lib/billCategories";
 import ShareSection from "../components/ShareSection";
 
 export default function PatientDetail() {
@@ -103,18 +104,18 @@ export default function PatientDetail() {
       <div className="page-header">
         <h2>Current Bill (Draft)</h2>
         <button className="btn-primary" onClick={() => setShowBillForm((v) => !v)}>
-          {showBillForm ? "Cancel" : "+ Add Items"}
+          {showBillForm ? "Cancel" : draft ? "Edit Bill" : "+ Start Bill"}
         </button>
       </div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginTop: -8, marginBottom: 12 }}>
-        Items you add here accumulate onto one bill instead of creating a new invoice each time.
-        Finalize it when the visit/stay is complete.
+        One draft bill per visit/stay — reopen it to fill in more of the bill pad as the stay goes
+        on. Finalize it when the visit/stay is complete.
       </p>
 
       {showBillForm && (
         <BillForm
           patientId={patientId}
-          onAdded={() => {
+          onSaved={() => {
             setShowBillForm(false);
             loadBills();
           }}
@@ -127,21 +128,23 @@ export default function PatientDetail() {
             <table className="bill-print-table" style={{ marginBottom: 12 }}>
               <thead>
                 <tr>
+                  <th>Bill line</th>
                   <th>Item</th>
                   <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>GST %</th>
+                  <th>Rate</th>
                   <th>Amount</th>
+                  <th>Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {draft.items.map((item, i) => (
                   <tr key={i}>
+                    <td>{categoryLabel(item.category, "Misc.")}</td>
                     <td>{item.name}</td>
                     <td>{item.quantity}</td>
                     <td>₹{item.unitPrice.toFixed(2)}</td>
-                    <td>{item.gstPercent}%</td>
                     <td>₹{item.amount.toFixed(2)}</td>
+                    <td>{item.remarks || ""}</td>
                   </tr>
                 ))}
               </tbody>

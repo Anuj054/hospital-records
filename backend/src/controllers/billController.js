@@ -2,30 +2,47 @@ import Patient from "../models/Patient.js";
 import Bill from "../models/Bill.js";
 import { generateBillNumber } from "../utils/generateBillNumber.js";
 import { withComputed } from "../utils/billComputed.js";
+import { BILL_CATEGORY_SLUGS, DEFAULT_BILL_CATEGORY } from "../constants/billCategories.js";
 
-// unitPrice is GST-INCLUSIVE (e.g. MRP-style pricing) — GST is backed out
-// of amount rather than added on top, so amount never changes with gstPercent.
+const CATEGORY_SET = new Set(BILL_CATEGORY_SLUGS);
+
 function normalizeItem(item) {
   const quantity = Number(item.quantity) || 1;
   const unitPrice = Number(item.unitPrice) || 0;
-  const gstPercent = Math.min(Math.max(Number(item.gstPercent) || 0, 0), 100);
-  const amount = quantity * unitPrice;
-  const gstAmount = Math.round((amount * gstPercent * 100) / (100 + gstPercent)) / 100;
+  // An unrecognised category is coerced rather than rejected so a stale
+  // client can't 400 the whole bill — the charge still lands, under Misc.
+  const category = CATEGORY_SET.has(item.category) ? item.category : DEFAULT_BILL_CATEGORY;
   return {
     refId: item.refId || undefined,
+    category,
     name: item.name,
     quantity,
     unitPrice,
-    amount,
-    gstPercent,
-    gstAmount,
+    amount: Math.round(quantity * unitPrice * 100) / 100,
+    remarks: item.remarks || undefined,
   };
 }
 
 function recomputeTotals(bill) {
-  bill.totalAmount = bill.items.reduce((sum, i) => sum + i.amount, 0); // inclusive, what's charged
-  bill.gstAmount = bill.items.reduce((sum, i) => sum + i.gstAmount, 0); // backed out of totalAmount
-  bill.subtotal = bill.totalAmount - bill.gstAmount; // taxable value
+  const total = bill.items.reduce((sum, i) => sum + i.amount, 0);
+  bill.totalAmount = Math.round(total * 100) / 100;
+}
+
+// The pad's header block. Blank strings clear a field rather than being
+// stored, so clearing a date in the form actually empties it on the bill.
+function applyBillHeader(bill, body) {
+  if (body.doctorName !== undefined) bill.doctorName = body.doctorName;
+  if (body.notes !== undefined) bill.notes = body.notes;
+  if (body.receivedFrom !== undefined) bill.receivedFrom = body.receivedFrom;
+  if (body.admission) {
+    const a = body.admission;
+    bill.admission = {
+      dateOfAdmission: a.dateOfAdmission ? new Date(a.dateOfAdmission) : undefined,
+      dateOfDischarge: a.dateOfDischarge ? new Date(a.dateOfDischarge) : undefined,
+      timeOfAdmission: a.timeOfAdmission || undefined,
+      timeOfDischarge: a.timeOfDischarge || undefined,
+    };
+  }
 }
 
 // Get the patient's current open draft, or null.
@@ -34,27 +51,31 @@ export async function getDraftBill(req, res) {
   res.json(bill ? withComputed(bill) : null);
 }
 
-// Add items to the patient's current draft, creating one if none exists yet.
-// This is how multiple additions across a visit/stay end up on one invoice
-// instead of a new bill per addition.
-export async function addItemsToDraft(req, res) {
-  const { items, notes, doctorName } = req.body;
+// Writes the patient's open draft, creating one if none exists yet. The bill
+// mirrors a pre-printed pad whose lines are all present from the start, so the
+// form sends the whole sheet every save and this REPLACES items rather than
+// appending — re-saving after filling in one more category must not double the
+// ones already there. A visit still accumulates onto one draft; it is edited
+// in place instead of appended to.
+export async function saveDraftBill(req, res) {
+  const { items } = req.body;
   const patient = await Patient.findOne({ patientId: req.params.patientId });
   if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: "items must be a non-empty array" });
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ message: "items must be an array" });
   }
+  // Empty rows are the pad's normal state — only priced lines are stored.
+  const priced = items.filter((i) => i.name && Number(i.unitPrice) > 0);
 
   let bill = await Bill.findOne({ patientId: patient.patientId, isFinalized: false });
   if (!bill) {
     bill = new Bill({ patient: patient._id, patientId: patient.patientId, items: [] });
   }
 
-  bill.items.push(...items.map(normalizeItem));
+  bill.items = priced.map(normalizeItem);
   recomputeTotals(bill);
-  if (doctorName) bill.doctorName = doctorName;
-  if (notes) bill.notes = notes;
+  applyBillHeader(bill, req.body);
 
   await bill.save();
   res.status(201).json(bill);
@@ -127,11 +148,29 @@ export async function mergeBills(req, res) {
     });
   }
 
+  // The combined sheet covers the whole span, so take the earliest admission
+  // and the latest discharge across the bills being folded together. Each
+  // time-of-day string travels with the date it was recorded against.
+  const byAdmission = bills
+    .filter((b) => b.admission?.dateOfAdmission)
+    .sort((a, b) => new Date(a.admission.dateOfAdmission) - new Date(b.admission.dateOfAdmission));
+  const byDischarge = bills
+    .filter((b) => b.admission?.dateOfDischarge)
+    .sort((a, b) => new Date(a.admission.dateOfDischarge) - new Date(b.admission.dateOfDischarge));
+  const first = byAdmission[0];
+  const last = byDischarge[byDischarge.length - 1];
+
   const combined = new Bill({
     patient: bills[0].patient,
     patientId,
     items: bills.flatMap((b) => b.items),
     payments: bills.flatMap((b) => b.payments),
+    admission: {
+      dateOfAdmission: first?.admission?.dateOfAdmission,
+      dateOfDischarge: last?.admission?.dateOfDischarge,
+      timeOfAdmission: first?.admission?.timeOfAdmission,
+      timeOfDischarge: last?.admission?.timeOfDischarge,
+    },
     notes: `Combined from ${bills.map((b) => b.billNumber).join(", ")}`,
   });
   recomputeTotals(combined);

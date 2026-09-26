@@ -3,7 +3,7 @@ import { generateItemCode, reserveItemCodes } from "../utils/generateItemCode.js
 import { escapeRegex } from "../utils/escapeRegex.js";
 
 export async function createMedicine(req, res) {
-  const { name, unit, defaultPrice, gstPercent } = req.body;
+  const { name, unit, defaultPrice } = req.body;
   if (!name || defaultPrice == null) {
     return res.status(400).json({ message: "name and defaultPrice are required" });
   }
@@ -13,7 +13,6 @@ export async function createMedicine(req, res) {
     name,
     unit,
     defaultPrice,
-    gstPercent: gstPercent || 0,
   });
   res.status(201).json(medicine);
 }
@@ -31,10 +30,10 @@ export async function listMedicines(req, res) {
 }
 
 export async function updateMedicine(req, res) {
-  const { name, unit, defaultPrice, gstPercent } = req.body;
+  const { name, unit, defaultPrice } = req.body;
   const medicine = await Medicine.findByIdAndUpdate(
     req.params.id,
-    { name, unit, defaultPrice, gstPercent },
+    { name, unit, defaultPrice },
     { new: true, runValidators: true }
   );
   if (!medicine) return res.status(404).json({ message: "Medicine not found" });
@@ -75,7 +74,6 @@ export async function bulkImportMedicines(req, res) {
       name,
       unit: row.unit?.trim() || "unit",
       defaultPrice,
-      gstPercent: Number(row.gstPercent) || 0,
     });
   }
 

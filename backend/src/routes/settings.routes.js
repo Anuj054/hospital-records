@@ -13,8 +13,7 @@ const router = Router();
  *         hospitalName: { type: string }
  *         address: { type: string }
  *         phone: { type: string }
- *         gstNo: { type: string, description: "Hospital's GST registration number, printed on bills" }
- *         defaultGstPercent: { type: number, description: "Pre-filled GST% when creating a new bill" }
+ *         regNo: { type: string, description: "Hospital registration number, printed under the name on every bill" }
  *
  * /api/settings:
  *   get:
@@ -32,8 +31,7 @@ router.get("/", requireAuth, (req, res) => {
     hospitalName: process.env.HOSPITAL_NAME || "Your Hospital Name",
     address: process.env.HOSPITAL_ADDRESS || "",
     phone: process.env.HOSPITAL_PHONE || "",
-    gstNo: process.env.HOSPITAL_GST_NO || "",
-    defaultGstPercent: Number(process.env.DEFAULT_GST_PERCENT) || 0,
+    regNo: process.env.HOSPITAL_REG_NO || "",
   });
 });
 

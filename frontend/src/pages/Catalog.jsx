@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
 
-const emptyMedicine = { name: "", unit: "", defaultPrice: "", gstPercent: "" };
-const emptyService = { name: "", category: "other", defaultPrice: "", gstPercent: "" };
+const emptyMedicine = { name: "", unit: "", defaultPrice: "" };
+const emptyService = { name: "", category: "other", defaultPrice: "" };
 
 export default function Catalog() {
   const [tab, setTab] = useState("medicines");
@@ -112,7 +112,6 @@ function MedicinesTab() {
       await client.post("/medicines", {
         ...form,
         defaultPrice: Number(form.defaultPrice),
-        gstPercent: Number(form.gstPercent) || 0,
       });
       setForm(emptyMedicine);
       load(query);
@@ -133,7 +132,6 @@ function MedicinesTab() {
       name: item.name,
       unit: item.unit,
       defaultPrice: item.defaultPrice,
-      gstPercent: item.gstPercent || 0,
     });
   }
 
@@ -141,7 +139,6 @@ function MedicinesTab() {
     await client.put(`/medicines/${id}`, {
       ...editForm,
       defaultPrice: Number(editForm.defaultPrice),
-      gstPercent: Number(editForm.gstPercent) || 0,
     });
     setEditingId(null);
     load(query);
@@ -150,7 +147,7 @@ function MedicinesTab() {
   return (
     <div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>
-        CSV columns: name, unit, defaultPrice, gstPercent
+        CSV columns: name, unit, defaultPrice
       </p>
       <BulkImportForm endpoint="/medicines/bulk" onDone={load} />
 
@@ -178,17 +175,6 @@ function MedicinesTab() {
             onChange={(e) => setForm({ ...form, defaultPrice: e.target.value })}
           />
         </label>
-        <label>
-          GST %
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={form.gstPercent}
-            onChange={(e) => setForm({ ...form, gstPercent: e.target.value })}
-          />
-        </label>
         <button type="submit" className="btn-primary">
           Add Medicine
         </button>
@@ -213,7 +199,6 @@ function MedicinesTab() {
               <th>Name</th>
               <th>Unit</th>
               <th>Price</th>
-              <th>GST %</th>
               <th></th>
             </tr>
           </thead>
@@ -242,16 +227,6 @@ function MedicinesTab() {
                       onChange={(e) => setEditForm({ ...editForm, defaultPrice: e.target.value })}
                     />
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={editForm.gstPercent}
-                      onChange={(e) => setEditForm({ ...editForm, gstPercent: e.target.value })}
-                    />
-                  </td>
                   <td style={{ display: "flex", gap: 8 }}>
                     <button className="btn-primary" onClick={() => handleSaveEdit(m._id)}>
                       Save
@@ -267,7 +242,6 @@ function MedicinesTab() {
                   <td>{m.name}</td>
                   <td>{m.unit}</td>
                   <td>₹{m.defaultPrice}</td>
-                  <td>{m.gstPercent || 0}%</td>
                   <td style={{ display: "flex", gap: 8 }}>
                     <button className="btn-link" onClick={() => startEdit(m)}>
                       Edit
@@ -315,7 +289,6 @@ function ServicesTab() {
       await client.post("/services", {
         ...form,
         defaultPrice: Number(form.defaultPrice),
-        gstPercent: Number(form.gstPercent) || 0,
       });
       setForm(emptyService);
       load(query);
@@ -336,7 +309,6 @@ function ServicesTab() {
       name: item.name,
       category: item.category,
       defaultPrice: item.defaultPrice,
-      gstPercent: item.gstPercent || 0,
     });
   }
 
@@ -344,7 +316,6 @@ function ServicesTab() {
     await client.put(`/services/${id}`, {
       ...editForm,
       defaultPrice: Number(editForm.defaultPrice),
-      gstPercent: Number(editForm.gstPercent) || 0,
     });
     setEditingId(null);
     load(query);
@@ -353,7 +324,7 @@ function ServicesTab() {
   return (
     <div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>
-        CSV columns: name, category, defaultPrice, gstPercent
+        CSV columns: name, category, defaultPrice
       </p>
       <BulkImportForm endpoint="/services/bulk" onDone={load} />
 
@@ -389,17 +360,6 @@ function ServicesTab() {
             onChange={(e) => setForm({ ...form, defaultPrice: e.target.value })}
           />
         </label>
-        <label>
-          GST %
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={form.gstPercent}
-            onChange={(e) => setForm({ ...form, gstPercent: e.target.value })}
-          />
-        </label>
         <button type="submit" className="btn-primary">
           Add Service
         </button>
@@ -424,7 +384,6 @@ function ServicesTab() {
               <th>Name</th>
               <th>Category</th>
               <th>Price</th>
-              <th>GST %</th>
               <th></th>
             </tr>
           </thead>
@@ -435,7 +394,6 @@ function ServicesTab() {
                 <td>{s.name}</td>
                 <td>{s.category}</td>
                 <td>₹{s.defaultPrice}</td>
-                <td>{s.gstPercent || 0}%</td>
                 <td>
                   <button className="btn-danger-ghost" onClick={() => handleDelete(s._id)}>
                     Delete

@@ -22,7 +22,6 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *         name: { type: string }
  *         category: { type: string, enum: [operation, consultation, lab, other] }
  *         defaultPrice: { type: number }
- *         gstPercent: { type: number, description: "GST rate applied when this service is billed" }
  *
  * /api/services:
  *   post:
@@ -52,7 +51,7 @@ router.get("/", listServices);
  * @openapi
  * /api/services/bulk:
  *   post:
- *     summary: "Bulk import services from a CSV file (admin only). Columns: name, category, defaultPrice, gstPercent"
+ *     summary: "Bulk import services from a CSV file (admin only). Columns: name, category, defaultPrice"
  *     tags: [Services]
  *     requestBody:
  *       required: true

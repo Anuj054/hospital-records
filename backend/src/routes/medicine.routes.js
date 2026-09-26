@@ -22,7 +22,6 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *         name: { type: string }
  *         unit: { type: string, example: "tablet" }
  *         defaultPrice: { type: number }
- *         gstPercent: { type: number, description: "GST rate applied when this medicine is billed" }
  *
  * /api/medicines:
  *   post:
@@ -52,7 +51,7 @@ router.get("/", listMedicines);
  * @openapi
  * /api/medicines/bulk:
  *   post:
- *     summary: "Bulk import medicines from a CSV file (admin only). Columns: name, unit, defaultPrice, gstPercent"
+ *     summary: "Bulk import medicines from a CSV file (admin only). Columns: name, unit, defaultPrice"
  *     tags: [Medicines]
  *     requestBody:
  *       required: true

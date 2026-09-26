@@ -12,6 +12,9 @@ const serviceSchema = new mongoose.Schema(
       default: "other",
     },
     defaultPrice: { type: Number, required: true, min: 0 },
+    // Bills no longer carry GST (the hospital's printed bill pad has no GST
+    // line), so nothing reads this. Kept so the historical rates already on
+    // catalog rows are not silently dropped.
     gstPercent: { type: Number, default: 0, min: 0, max: 100 },
   },
   { timestamps: true }

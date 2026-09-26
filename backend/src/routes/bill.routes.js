@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   getDraftBill,
-  addItemsToDraft,
+  saveDraftBill,
   finalizeBill,
   mergeBills,
   listBillsForPatient,
@@ -23,9 +23,10 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *       properties:
  *         refId: { type: string, description: "Medicine or Service _id (optional for custom items)" }
  *         name: { type: string }
- *         quantity: { type: number }
+ *         quantity: { type: number, description: "Days, for the Room Charges line" }
  *         unitPrice: { type: number }
- *         gstPercent: { type: number, description: "GST rate for this item, 0-100" }
+ *         category: { type: string, description: "Which pre-printed line of the bill pad this charge sits on; defaults to misc" }
+ *         remarks: { type: string, description: "Free text for the pad's REMARKS column" }
  *     Bill:
  *       type: object
  *       properties:
@@ -35,9 +36,16 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *         items:
  *           type: array
  *           items: { $ref: '#/components/schemas/BillItem' }
- *         subtotal: { type: number, description: "Sum of item amounts, before GST" }
- *         gstAmount: { type: number, description: "Sum of each item's amount * gstPercent / 100" }
- *         totalAmount: { type: number, description: "subtotal + gstAmount" }
+ *         totalAmount: { type: number, description: "Sum of item amounts" }
+ *         admission:
+ *           type: object
+ *           description: "The pad's D.O.A. / D.O.D. / Time of Admission / T.O.D. block"
+ *           properties:
+ *             dateOfAdmission: { type: string, format: date }
+ *             dateOfDischarge: { type: string, format: date }
+ *             timeOfAdmission: { type: string, example: "10:30 AM" }
+ *             timeOfDischarge: { type: string, example: "4:15 PM" }
+ *         receivedFrom: { type: string, description: "The pad's \"Received with thanks from\" line" }
  *         payments:
  *           type: array
  *           items:
@@ -66,7 +74,7 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *     responses:
  *       200: { description: Draft bill, or null if none open }
  *   post:
- *     summary: Add items to the patient's current draft (creates one if none exists). Repeated calls accumulate onto the same bill instead of creating new invoices.
+ *     summary: "Save the patient's open draft (creates one if none exists). Sends the whole bill sheet: items REPLACE what was there, they do not accumulate."
  *     tags: [Bills]
  *     parameters:
  *       - in: path
@@ -91,7 +99,7 @@ router.use(requireAuth, requireRole("admin", "staff"));
  *       404: { description: Patient not found }
  */
 router.get("/patients/:patientId/bills/draft", getDraftBill);
-router.post("/patients/:patientId/bills/draft", addItemsToDraft);
+router.post("/patients/:patientId/bills/draft", saveDraftBill);
 
 /**
  * @openapi
