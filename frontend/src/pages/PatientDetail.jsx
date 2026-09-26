@@ -104,12 +104,12 @@ export default function PatientDetail() {
       <div className="page-header">
         <h2>Current Bill (Draft)</h2>
         <button className="btn-primary" onClick={() => setShowBillForm((v) => !v)}>
-          {showBillForm ? "Cancel" : draft ? "Edit Bill" : "+ Start Bill"}
+          {showBillForm ? "Cancel" : draft ? "Edit Bill" : "Make Bill"}
         </button>
       </div>
       <p style={{ fontSize: 13, color: "var(--muted)", marginTop: -8, marginBottom: 12 }}>
-        One draft bill per visit/stay — reopen it to fill in more of the bill pad as the stay goes
-        on. Finalize it when the visit/stay is complete.
+        One draft bill per visit/stay — reopen it with "Edit Bill" to fill in more of the bill pad
+        as the stay goes on. Finalize it when the visit/stay is complete.
       </p>
 
       {showBillForm && (

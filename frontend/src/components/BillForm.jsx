@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
 import { loadCatalog } from "../api/catalog";
-import SearchableSelect from "./SearchableSelect";
-import { BILL_CATEGORIES, categoryLabel, flattenBillCategories } from "../lib/billCategories";
+import { categoryLabel, flattenBillCategories } from "../lib/billCategories";
 
 const ROWS = flattenBillCategories();
 const ROOM = "room";
@@ -11,7 +10,7 @@ const ROOM = "room";
 function emptyRows() {
   const rows = {};
   for (const row of ROWS) {
-    if (!row.isHeader) rows[row.slug] = { amount: "", remarks: "", days: "" };
+    if (!row.isHeader) rows[row.slug] = { amount: "", remarks: "", rate: "", days: "" };
   }
   return rows;
 }
@@ -22,48 +21,45 @@ function toDateInput(value) {
   return Number.isNaN(+d) ? "" : d.toISOString().slice(0, 10);
 }
 
-// Splits a saved draft back into the two things the form edits: the fixed pad
-// lines, and any catalog/custom extras riding along under a category. An item
-// counts as a pad line when its name is exactly that category's printed label
-// — anything else was added as an extra and keeps its own name.
+// Splits a saved draft into the pad lines this form edits, plus anything that
+// isn't one. A charge counts as a pad line when its name is exactly that
+// category's printed label. The rest are charges raised before the catalog was
+// removed: they are shown read-only and resent untouched, so reopening an old
+// draft can never quietly drop money off it.
 function draftToForm(draft) {
   const rows = emptyRows();
-  const extras = [];
-  if (!draft) return { rows, extras };
+  const carried = [];
+  if (!draft) return { rows, carried };
 
   for (const item of draft.items || []) {
     const slug = item.category || "misc";
-    if (rows[slug] && item.name === categoryLabel(slug)) {
-      const remarks = [rows[slug].remarks, item.remarks].filter(Boolean).join("; ");
-      if (slug === ROOM) {
-        // Room is a rate and a stay length, not a lump sum — carry both across
-        // verbatim. A merged bill spanning two stays keeps the later rate.
-        rows[slug] = { amount: String(item.unitPrice ?? ""), days: String(item.quantity || ""), remarks };
-      } else {
-        // A merged bill can carry the same pad line more than once; sum them so
-        // re-saving the draft preserves the total rather than keeping only one.
-        const existing = Number(rows[slug].amount) || 0;
-        rows[slug] = { amount: String(existing + item.amount), days: "", remarks };
-      }
+    if (!rows[slug] || item.name !== categoryLabel(slug)) {
+      carried.push(item);
+      continue;
+    }
+    const remarks = [rows[slug].remarks, item.remarks].filter(Boolean).join("; ");
+    if (slug === ROOM) {
+      // A stay billed by the day was stored as rate x days; a lump sum was
+      // stored as quantity 1. Only the first refills the rate/days boxes.
+      const days = item.quantity || 1;
+      rows[slug] =
+        days > 1
+          ? { amount: String(item.amount), rate: String(item.unitPrice ?? ""), days: String(days), remarks }
+          : { amount: String(item.amount), rate: "", days: "", remarks };
     } else {
-      extras.push({
-        refId: item.refId || "",
-        category: slug,
-        name: item.name,
-        quantity: item.quantity ?? 1,
-        unitPrice: item.unitPrice ?? 0,
-        remarks: item.remarks || "",
-      });
+      // A merged bill can carry the same pad line more than once; sum them so
+      // re-saving the draft preserves the total rather than keeping only one.
+      const existing = Number(rows[slug].amount) || 0;
+      rows[slug] = { amount: String(existing + item.amount), rate: "", days: "", remarks };
     }
   }
-  return { rows, extras };
+  return { rows, carried };
 }
 
 export default function BillForm({ patientId, onSaved }) {
-  const [catalog, setCatalog] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [rows, setRows] = useState(emptyRows);
-  const [extras, setExtras] = useState([]);
+  const [carried, setCarried] = useState([]);
   const [doctorName, setDoctorName] = useState("");
   const [admission, setAdmission] = useState({
     dateOfAdmission: "",
@@ -79,20 +75,17 @@ export default function BillForm({ patientId, onSaved }) {
 
   useEffect(() => {
     let active = true;
-    // Cached in api/catalog.js — this component remounts on every toggle of
-    // the bill panel, and the catalog rarely changes.
     Promise.all([loadCatalog(), client.get(`/patients/${patientId}/bills/draft`)])
-      .then(([{ catalog: items, doctors: docs }, draftRes]) => {
+      .then(([{ doctors: docs }, draftRes]) => {
         if (!active) return;
-        setCatalog(items);
         setDoctors(docs);
 
         // The form sends the whole sheet on save, so it has to open showing
-        // what is already on the draft — otherwise saving would wipe it.
+        // what is already on the draft - otherwise saving would wipe it.
         const draft = draftRes.data;
-        const { rows: loadedRows, extras: loadedExtras } = draftToForm(draft);
+        const { rows: loadedRows, carried: loadedCarried } = draftToForm(draft);
         setRows(loadedRows);
-        setExtras(loadedExtras);
+        setCarried(loadedCarried);
         if (draft) {
           setDoctorName(draft.doctorName || "");
           setReceivedFrom(draft.receivedFrom || "");
@@ -115,56 +108,43 @@ export default function BillForm({ patientId, onSaved }) {
     setRows((prev) => ({ ...prev, [slug]: { ...prev[slug], ...patch } }));
   }
 
-  function updateExtra(index, patch) {
-    setExtras((prev) => prev.map((e, i) => (i === index ? { ...e, ...patch } : e)));
+  // Filling both halves of "Rs. ___ Per Day x ___ days" fills the amount box;
+  // typing straight into the amount box just leaves them blank.
+  function updateRoomRate(patch) {
+    const next = { ...rows[ROOM], ...patch };
+    const rate = Number(next.rate) || 0;
+    const days = Number(next.days) || 0;
+    if (rate && days) next.amount = String(Math.round(rate * days * 100) / 100);
+    setRows((prev) => ({ ...prev, [ROOM]: next }));
   }
 
-  // Room is the one line billed as a rate times a stay length; the rest are a
-  // single figure typed straight into the amount column.
-  function rowTotal(slug) {
-    const row = rows[slug];
-    if (!row) return 0;
-    const amount = Number(row.amount) || 0;
-    if (slug === ROOM) return amount * (Number(row.days) || 0);
-    return amount;
-  }
-
-  const extrasTotal = extras.reduce(
-    (sum, e) => sum + (Number(e.quantity) || 0) * (Number(e.unitPrice) || 0),
-    0
-  );
-  const total = ROWS.filter((r) => !r.isHeader).reduce((sum, r) => sum + rowTotal(r.slug), 0) + extrasTotal;
-
-  const catalogOptions = catalog.map((c) => ({
-    ...c,
-    label: `[${c.itemCode}] ${c.name} (₹${c.defaultPrice})`,
-  }));
-
-  function addExtra() {
-    setExtras((prev) => [
-      ...prev,
-      { refId: "", category: "misc", name: "", quantity: 1, unitPrice: 0, remarks: "" },
-    ]);
-  }
+  const carriedTotal = carried.reduce((sum, i) => sum + i.amount, 0);
+  const total =
+    ROWS.filter((r) => !r.isHeader).reduce((sum, r) => sum + (Number(rows[r.slug]?.amount) || 0), 0) +
+    carriedTotal;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-    if (extras.some((x) => !x.name)) {
-      setError("Every extra item needs a name (pick from the catalog or type one)");
-      return;
-    }
     setSubmitting(true);
     try {
       const padItems = ROWS.filter((r) => !r.isHeader)
-        .filter((r) => rowTotal(r.slug) > 0)
-        .map((r) => ({
-          category: r.slug,
-          name: categoryLabel(r.slug),
-          quantity: r.slug === ROOM ? Number(rows[r.slug].days) || 1 : 1,
-          unitPrice: Number(rows[r.slug].amount) || 0,
-          remarks: rows[r.slug].remarks,
-        }));
+        .filter((r) => (Number(rows[r.slug].amount) || 0) > 0)
+        .map((r) => {
+          const row = rows[r.slug];
+          const days = r.slug === ROOM ? Number(row.days) || 0 : 0;
+          const rate = r.slug === ROOM ? Number(row.rate) || 0 : 0;
+          // Storing days x rate is what lets the printed pad fill in its
+          // "Rs. ____ Per Day" line; a lump sum stays quantity 1.
+          const byRate = days > 0 && rate > 0;
+          return {
+            category: r.slug,
+            name: categoryLabel(r.slug),
+            quantity: byRate ? days : 1,
+            unitPrice: byRate ? rate : Number(row.amount) || 0,
+            remarks: row.remarks,
+          };
+        });
 
       await client.post(`/patients/${patientId}/bills/draft`, {
         doctorName,
@@ -173,20 +153,19 @@ export default function BillForm({ patientId, onSaved }) {
         admission,
         items: [
           ...padItems,
-          ...extras.map((x) => ({
-            refId: x.refId || undefined,
-            category: x.category,
-            name: x.name,
-            quantity: Number(x.quantity) || 1,
-            unitPrice: Number(x.unitPrice) || 0,
-            remarks: x.remarks,
+          ...carried.map((i) => ({
+            refId: i.refId || undefined,
+            category: i.category,
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            remarks: i.remarks,
           })),
         ],
       });
       onSaved();
     } catch (err) {
       setError(err.response?.data?.message || "Could not save the bill");
-    } finally {
       setSubmitting(false);
     }
   }
@@ -245,8 +224,8 @@ export default function BillForm({ patientId, onSaved }) {
       </div>
 
       <p className="bill-form-hint">
-        All 15 lines of the bill pad are listed below. Enter an amount against the ones that apply
-        and leave the rest blank — only priced lines are saved.
+        Type an amount against the lines that apply and leave the rest blank. Only priced
+        lines are saved.
       </p>
 
       <div className="table-x-scroll">
@@ -271,11 +250,10 @@ export default function BillForm({ patientId, onSaved }) {
                   </tr>
                 );
               }
-              const isChild = Boolean(row.parent);
               return (
                 <tr key={row.slug}>
                   <td>{row.no || ""}</td>
-                  <td className={isChild ? "pad-child-label" : undefined}>
+                  <td className={row.parent ? "pad-child-label" : undefined}>
                     {row.label}
                     {row.lines?.map((line) => (
                       <div className="pad-sub-line" key={line}>
@@ -290,8 +268,8 @@ export default function BillForm({ patientId, onSaved }) {
                           min="0"
                           step="0.01"
                           aria-label="Room rate per day"
-                          value={rows[row.slug].amount}
-                          onChange={(e) => updateRow(row.slug, { amount: e.target.value })}
+                          value={rows[row.slug].rate}
+                          onChange={(e) => updateRoomRate({ rate: e.target.value })}
                         />
                         Per Day &times;
                         <input
@@ -299,25 +277,21 @@ export default function BillForm({ patientId, onSaved }) {
                           min="0"
                           aria-label="Number of days"
                           value={rows[row.slug].days}
-                          onChange={(e) => updateRow(row.slug, { days: e.target.value })}
+                          onChange={(e) => updateRoomRate({ days: e.target.value })}
                         />
-                        days
+                        days (optional)
                       </div>
                     )}
                   </td>
                   <td>
-                    {row.perDay ? (
-                      <span className="pad-computed">₹{rowTotal(row.slug).toFixed(2)}</span>
-                    ) : (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        aria-label={`${row.label} amount`}
-                        value={rows[row.slug].amount}
-                        onChange={(e) => updateRow(row.slug, { amount: e.target.value })}
-                      />
-                    )}
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      aria-label={`${row.label} amount`}
+                      value={rows[row.slug].amount}
+                      onChange={(e) => updateRow(row.slug, { amount: e.target.value })}
+                    />
                   </td>
                   <td>
                     <input
@@ -329,111 +303,30 @@ export default function BillForm({ patientId, onSaved }) {
                 </tr>
               );
             })}
+
+            {carried.map((item, i) => (
+              <tr key={`carried-${i}`} className="pad-carried-row">
+                <td />
+                <td>
+                  {item.name}
+                  {item.quantity > 1 ? ` x${item.quantity}` : ""}
+                  <div className="pad-sub-line">added before the pad format</div>
+                </td>
+                <td>₹{item.amount.toFixed(2)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn-danger-ghost"
+                    onClick={() => setCarried((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    &times;
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
-
-      <h3 className="bill-form-subhead">Extra items from the catalog</h3>
-      <p className="bill-form-hint">
-        Medicines and priced services that need to appear by name. Each prints as its own line
-        underneath the pad line you file it under.
-      </p>
-
-      {extras.length > 0 && (
-        <div className="table-x-scroll">
-          <table className="bill-items-table">
-            <thead>
-              <tr>
-                <th>Catalog item</th>
-                <th>Name on bill</th>
-                <th>Files under</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Amount</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {extras.map((x, index) => (
-                <tr key={index}>
-                  <td>
-                    <SearchableSelect
-                      options={catalogOptions}
-                      placeholder="Search by name or code..."
-                      value={x.refId ? catalog.find((c) => c._id === x.refId)?.name : ""}
-                      onSelect={(opt) =>
-                        updateExtra(index, {
-                          refId: opt._id,
-                          name: opt.name,
-                          unitPrice: opt.defaultPrice,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={x.name}
-                      placeholder="Item name"
-                      onChange={(e) => updateExtra(index, { name: e.target.value, refId: "" })}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={x.category}
-                      onChange={(e) => updateExtra(index, { category: e.target.value })}
-                    >
-                      {BILL_CATEGORIES.flatMap((c) =>
-                        c.children
-                          ? c.children.map((ch) => (
-                              <option key={ch.slug} value={ch.slug}>
-                                {c.label} {ch.label}
-                              </option>
-                            ))
-                          : [
-                              <option key={c.slug} value={c.slug}>
-                                {c.no} {c.label}
-                              </option>,
-                            ]
-                      )}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="1"
-                      value={x.quantity}
-                      onChange={(e) => updateExtra(index, { quantity: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={x.unitPrice}
-                      onChange={(e) => updateExtra(index, { unitPrice: e.target.value })}
-                    />
-                  </td>
-                  <td>₹{((Number(x.quantity) || 0) * (Number(x.unitPrice) || 0)).toFixed(2)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-danger-ghost"
-                      onClick={() => setExtras((prev) => prev.filter((_, i) => i !== index))}
-                    >
-                      &times;
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <button type="button" className="btn-secondary" onClick={addExtra}>
-        + Add Catalog Item
-      </button>
 
       <div className="bill-form-header">
         <label>

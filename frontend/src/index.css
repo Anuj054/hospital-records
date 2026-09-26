@@ -1312,11 +1312,6 @@ h3 {
   margin: 4px 0 8px;
 }
 
-.bill-form-subhead {
-  margin: 20px 0 0;
-  font-size: 15px;
-}
-
 .bill-items-table .col-sno {
   width: 56px;
 }
@@ -1340,8 +1335,12 @@ h3 {
   width: 78px;
 }
 
-.pad-computed {
-  font-weight: 600;
+/* Charges from before the pad format. Read-only and dimmed so it is clear
+   they are being carried, not entered here. */
+.pad-carried-row td {
+  background: var(--sunken, rgba(0, 0, 0, 0.03));
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ---------- Public shared patient view ---------- */

@@ -125,7 +125,10 @@ export default function BillPad({ bill, patient, settings, printRef }) {
             // Header lines (Investigation) never carry an amount of their
             // own — their children below do.
             const money = !row.isHeader && group?.total ? splitAmount(group.total) : null;
-            const rate = row.slug === ROOM ? group?.unitPrice : null;
+            // Only a stay billed as rate x days can fill in the pad's
+            // "Rs. ____ Per Day" line. A lump sum leaves it blank, exactly as
+            // it sits pre-printed on the paper.
+            const rate = row.slug === ROOM && group?.quantity > 1 ? group.unitPrice : null;
             return (
               <tr key={row.slug} className={row.isHeader ? "pad-header-row" : undefined}>
                 <td className="pad-col-sno">{row.no || ""}</td>
@@ -138,7 +141,7 @@ export default function BillPad({ bill, patient, settings, printRef }) {
                   ))}
                   {row.perDay && (
                     <div className="pad-sub-line">
-                      Rs. {rate ? rate.toLocaleString("en-IN") : ""} Per Day
+                      Rs. {rate ? rate.toLocaleString("en-IN") : "\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0"} Per Day
                     </div>
                   )}
                   {group?.named.map((item, i) => (
@@ -151,8 +154,11 @@ export default function BillPad({ bill, patient, settings, printRef }) {
                 <td className="pad-col-rs">{money?.rupees ?? ""}</td>
                 <td className="pad-col-p">{money?.paise ?? ""}</td>
                 <td className="pad-col-remarks">
-                  {row.slug === ROOM && group?.quantity
-                    ? [`${group.quantity} day${group.quantity > 1 ? "s" : ""}`, ...(group?.remarks ?? [])].join(", ")
+                  {/* Only a rate x days stay has a day count worth printing.
+                      A lump sum is stored as quantity 1 and would otherwise
+                      claim a "1 day" stay nobody entered. */}
+                  {rate
+                    ? [`${group.quantity} days`, ...(group?.remarks ?? [])].join(", ")
                     : (group?.remarks ?? []).join(", ")}
                 </td>
               </tr>
